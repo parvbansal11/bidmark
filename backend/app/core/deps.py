@@ -51,6 +51,8 @@ require_admin = require_roles(UserRole.ADMIN)
 require_officer = require_roles(UserRole.PROCUREMENT_OFFICER, UserRole.ADMIN)
 require_bidder = require_roles(UserRole.BIDDER, UserRole.ADMIN)
 require_any = require_roles(UserRole.BIDDER, UserRole.PROCUREMENT_OFFICER, UserRole.ADMIN)
+# Read-only oversight endpoints: the audit chain, decision history, rule reliability.
+require_oversight = require_roles(UserRole.AUDITOR, UserRole.ADMIN, UserRole.PROCUREMENT_OFFICER)
 
 
 def get_own_bidder_id(current_user: User, db: Session) -> str | None:

@@ -4,6 +4,11 @@ from typing import Optional
 from pydantic import BaseModel
 
 
+class Director(BaseModel):
+    name: str
+    din: Optional[str] = None
+
+
 class BidderCreate(BaseModel):
     company_name: str
     legal_name: Optional[str] = None
@@ -16,6 +21,7 @@ class BidderCreate(BaseModel):
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     website: Optional[str] = None
+    directors: Optional[list[Director]] = None
     user_id: Optional[str] = None
 
 
@@ -33,6 +39,7 @@ class BidderUpdate(BaseModel):
     contact_email: Optional[str] = None
     contact_phone: Optional[str] = None
     website: Optional[str] = None
+    directors: Optional[list[Director]] = None
     status: Optional[str] = None
 
 
@@ -85,6 +92,7 @@ class BidderOut(BaseModel):
     contact_phone: Optional[str] = None
     website: Optional[str] = None
     status: str
+    directors: Optional[list] = None
     created_at: datetime
     updated_at: datetime
 

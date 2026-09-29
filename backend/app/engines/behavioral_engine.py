@@ -15,8 +15,6 @@ Configurable rule weights (see PS spec section 46):
 """
 from __future__ import annotations
 
-import hashlib
-import random
 from datetime import timedelta
 from typing import Any
 
@@ -46,11 +44,6 @@ def _normalize_addr(addr: str | None) -> str:
     if not addr:
         return ""
     return "".join(addr.lower().split())
-
-
-def _rng_for(bidder_id: str, tender_id: str, salt: str) -> random.Random:
-    seed = int(hashlib.sha256(f"{salt}:{bidder_id}:{tender_id}".encode()).hexdigest(), 16) % (2**32)
-    return random.Random(seed)
 
 
 def analyze_behavior(db: Session, bidder_id: str, tender_id: str) -> BehavioralRiskReport:
@@ -103,23 +96,16 @@ def analyze_behavior(db: Session, bidder_id: str, tender_id: str) -> BehavioralR
     doc_ids = [d.id for d in db.query(Document).filter(Document.bidder_id == bidder_id, Document.is_deleted == False).all()]  # noqa: E712
     if doc_ids:
         forensic_reports = db.query(ForensicAnalysis).filter(ForensicAnalysis.document_id.in_(doc_ids)).all()
-        structural_hits = [f for f in forensic_reports if any(s.get("type") in ("STRUCTURAL_ANOMALY", "REPEATED_CONTENT_BLOCK") for s in f.signals)]
-        if structural_hits:
-            add_flag("DOCUMENT_BEHAVIOR", "Possible mass-produced / templated document structure",
-                      f"{len(structural_hits)} document(s) show structural or repeated-content anomalies consistent with templated generation.",
-                      "low", "DOCUMENT_BEHAVIOR")
-        metadata_hits = [f for f in forensic_reports if any(s.get("type") == "METADATA_TIMESTAMP_ANOMALY" for s in f.signals)]
+        edited = [f for f in forensic_reports if any(s.get("type") in ("FIELD_FONT_OUTLIER", "OVERLAPPING_TEXT", "MODIFIED_AFTER_SIGNING", "SIGNATURE_BROKEN") for s in f.signals)]
+        if edited:
+            add_flag("DOCUMENT_BEHAVIOR", "Documents edited after issue",
+                      f"{len(edited)} document(s) show values typed over the original or changes after signing.",
+                      "high", "DOCUMENT_BEHAVIOR")
+        metadata_hits = [f for f in forensic_reports if any(s.get("type") in ("TIMESTAMP_INVERSION", "EDITOR_TOOL") for s in f.signals)]
         if metadata_hits:
-            add_flag("DOCUMENT_BEHAVIOR", "Unusual document metadata",
-                      f"{len(metadata_hits)} document(s) show metadata timestamp anomalies.",
-                      "low", "DOCUMENT_BEHAVIOR")
-
-    # AI-generated-style language: deterministic, explicitly low-confidence supporting signal only.
-    rng = _rng_for(bidder_id, tender_id, "ai_style")
-    if rng.random() < 0.12:
-        add_flag("DOCUMENT_BEHAVIOR", "Possible AI-generated-style language (low-confidence signal)",
-                  "Submitted text shows stylistic patterns sometimes associated with AI-generated content. This is a weak, supporting signal only.",
-                  "low", "DOCUMENT_BEHAVIOR")
+            add_flag("DOCUMENT_BEHAVIOR", "Documents re-saved in an editor",
+                      f"{len(metadata_hits)} document(s) were last written by an editing tool or carry inverted timestamps.",
+                      "medium", "DOCUMENT_BEHAVIOR")
 
     # --- 3. Cross-bidder intelligence ---
     comparisons = (

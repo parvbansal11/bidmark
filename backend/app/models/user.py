@@ -11,6 +11,7 @@ class UserRole(str, enum.Enum):
     BIDDER = "BIDDER"
     PROCUREMENT_OFFICER = "PROCUREMENT_OFFICER"
     ADMIN = "ADMIN"
+    AUDITOR = "AUDITOR"  # read-only: vigilance / internal audit
 
 
 class User(Base, UUIDMixin, TimestampMixin):

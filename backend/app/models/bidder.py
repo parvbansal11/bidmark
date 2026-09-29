@@ -1,4 +1,4 @@
-from sqlalchemy import Date, ForeignKey, String
+from sqlalchemy import Date, ForeignKey, JSON, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -22,6 +22,8 @@ class Bidder(Base, UUIDMixin, TimestampMixin):
     contact_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     website: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(30), default="ACTIVE")
+    # [{"name": ..., "din": ...}] as declared by the bidder; DIN is the MCA director ID.
+    directors: Mapped[list] = mapped_column(JSON, default=list)
 
     user = relationship("User", back_populates="bidder_profile")
     documents = relationship("Document", back_populates="bidder", cascade="all, delete-orphan")

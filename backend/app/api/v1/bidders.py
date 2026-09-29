@@ -57,7 +57,7 @@ def create_bidder(payload: BidderCreate, db: Session = Depends(get_db), current_
     # profiles are normally created automatically at self-registration
     # (see app/api/v1/auth.py::register). There is no "Add Bidder" UI action
     # anywhere in the product for any role.
-    bidder = Bidder(**payload.model_dump())
+    bidder = Bidder(**{**payload.model_dump(), "directors": payload.model_dump().get("directors") or []})
     db.add(bidder)
     db.commit()
     db.refresh(bidder)

@@ -6,14 +6,16 @@ from app.core.database import get_db
 from app.core.deps import get_current_user
 from app.core.rate_limit import login_rate_limiter
 from app.core.security import create_access_token, hash_password, verify_password
+from app.models.bidder import Bidder
 from app.models.user import User, UserRole
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserOut
+from app.services import telemetry_service as telemetry
 from app.services.audit_service import log_action
 from app.utils.responses import ApiError, success
 
 router = APIRouter(prefix="/api/v1/auth", tags=["Authentication"])
 
-PRIVILEGED_ROLES = {UserRole.ADMIN, UserRole.PROCUREMENT_OFFICER}
+PRIVILEGED_ROLES = {UserRole.ADMIN, UserRole.PROCUREMENT_OFFICER, UserRole.AUDITOR}
 
 
 @router.get("/config")
@@ -46,7 +48,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
         if not payload.email.lower().endswith(f"@{domain}"):
             raise ApiError(
                 "PRIVILEGED_ROLE_EMAIL_DOMAIN_REQUIRED",
-                f"Admin and Procurement Officer accounts require an @{domain} email address.",
+                f"Admin, Procurement Officer and Auditor accounts require an @{domain} email address.",
                 status_code=422,
             )
 
@@ -96,6 +98,9 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     login_rate_limiter.clear(rate_key)
     token = create_access_token(subject=user.id, role=user.role.value)
     log_action(db, action="LOGIN", actor=user, entity_type="User", entity_id=user.id, description=f"User {user.email} logged in")
+    if user.role == UserRole.BIDDER:
+        profile = db.query(Bidder).filter(Bidder.user_id == user.id).first()
+        telemetry.record(db, request, "LOGIN", user_id=user.id, bidder_id=profile.id if profile else None)
     return success(TokenResponse(access_token=token, user=UserOut.model_validate(user)).model_dump(), "Login successful")
 
 

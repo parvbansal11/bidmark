@@ -29,8 +29,6 @@ IMPORTANT — consent / privacy rules
 """
 from __future__ import annotations
 
-import hashlib
-import random
 from datetime import datetime, timezone
 from typing import Any
 
@@ -44,17 +42,11 @@ from app.models.document import Document, DocumentExtraction
 from app.models.forensics import ForensicAnalysis
 from app.models.tender import Tender
 from app.models.verification import CrossCheckResult, VerificationResult
+from app.engines.cartel_engine import analyse_tender
 from app.providers.government.registry import GovernmentVerificationProvider
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
-
-def _rng(bidder_id: str, tender_id: str, salt: str) -> random.Random:
-    seed = int(
-        hashlib.sha256(f"{salt}:{bidder_id}:{tender_id}".encode()).hexdigest(), 16
-    ) % (2 ** 32)
-    return random.Random(seed)
-
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -318,23 +310,16 @@ def _run_compliance_module(
         .first()
     )
 
-    rng = _rng(bidder.id, tender.id, "compliance_module")
-
-    # -- GST filing regularity --
     gstin = bidder.gstin or ""
-    gst_filed_regularly = rng.choices([True, False], weights=[0.78, 0.22])[0]
     checks.append({
         "check": "GST Return Filing Regularity",
-        "status": "PASS" if gst_filed_regularly else "FLAG",
-        "source": "GSTN API — Filing Status (Mock, consent-based)",
+        "status": "UNMEASURED",
+        "source": "GSTN return filing API",
         "identifier": gstin or "Not provided",
-        "value": "Regular filer — all returns filed on time" if gst_filed_regularly else "Irregular — missed 2+ filing periods",
+        "value": None,
         "expected": "Regular filer",
-        "note": (
-            "GST returns filed consistently. No compliance gaps detected."
-            if gst_filed_regularly
-            else "Irregular GST filing history detected. Consent-based query via GSTN mock API."
-        ),
+        "note": "Needs GSTN API access with the bidder's consent, which this deployment does not have. "
+                "Not counted for or against the bidder.",
     })
 
     # -- Submission completeness --
@@ -383,21 +368,37 @@ def _run_compliance_module(
             "note": "Run full verification workflow to generate behavioural risk analysis.",
         })
 
-    # -- Pricing anomaly check (cross-bidder context) --
-    pricing_ok = rng.choices([True, False], weights=[0.82, 0.18])[0]
+    # -- Cartel links and price screens (tender-wide) --
+    intel = analyse_tender(db, tender.id)
+    mine = intel["per_bidder"].get(bidder.id, [])
+    ring_flags = [f for f in mine if f["code"] in ("LINKED_BIDDER_RING", "POSSIBLE_COVER_BID")]
+    price_flags = [f for f in mine if f["code"] not in ("LINKED_BIDDER_RING", "POSSIBLE_COVER_BID")]
     checks.append({
-        "check": "Bid Pricing Pattern",
-        "status": "PASS" if pricing_ok else "FLAG",
-        "source": "Platform internal — bid submission metadata",
+        "check": "Independence From Other Bidders",
+        "status": "FLAG" if ring_flags else "PASS",
+        "source": "Bidmark cartel engine (device, network, authorship, directors, contacts)",
         "identifier": f"Tender: {tender.tender_number}",
-        "value": "Price within expected market range" if pricing_ok else "Price significantly below market floor",
-        "expected": "Within market range",
-        "note": (
-            "Quoted price is within the expected range for this category and tender value."
-            if pricing_ok
-            else "Quoted price is significantly below the estimated market floor — may warrant review of financial capacity."
-        ),
+        "value": "; ".join(f["detail"] for f in ring_flags) or "No links to other bidders on this tender",
+        "expected": "No shared device, network, director or documents with competitors",
+        "note": ring_flags[0]["detail"] if ring_flags else "No links found to other bidders on this tender.",
     })
+    screens = intel["price_screens"]
+    if screens.get("n_bids", 0) >= 3 or price_flags:
+        checks.append({
+            "check": "Bid Pricing Pattern",
+            "status": "FLAG" if price_flags else "PASS",
+            "source": "Price screens: coefficient of variation, relative distance, step ladder",
+            "identifier": f"Tender: {tender.tender_number}",
+            "value": f"CV {screens.get('cv')}, RD {screens.get('relative_distance')}",
+            "expected": "No coordinated pricing pattern",
+            "note": price_flags[0]["detail"] if price_flags else "Prices show no coordination pattern.",
+        })
+    else:
+        checks.append({
+            "check": "Bid Pricing Pattern", "status": "UNMEASURED", "source": "Price screens",
+            "identifier": f"Tender: {tender.tender_number}", "value": None, "expected": "No coordinated pricing pattern",
+            "note": "Price screens need at least three priced bids on the tender.",
+        })
 
     passed = sum(1 for c in checks if c["status"] == "PASS")
     total = sum(1 for c in checks if c["status"] in ("PASS", "FLAG"))
@@ -542,39 +543,26 @@ def _run_document_module(
             ),
         })
 
-    # -- DigiLocker authenticity (mock architecture demo) --
-    rng = _rng(bidder.id, tender.id, "digilocker")
-    dl_verified = rng.choices([True, False, None], weights=[0.60, 0.20, 0.20])[0]
-    if dl_verified is True:
-        checks.append({
-            "check": "DigiLocker Document Authenticity",
-            "status": "PASS",
-            "source": "DigiLocker Pull API (Mock)",
-            "identifier": "Selected document(s)",
-            "value": "Cryptographically verified by issuing authority",
-            "expected": "Verified",
-            "note": "Document(s) verified against issuing authority via DigiLocker Pull API architecture (mock simulation).",
-        })
-    elif dl_verified is False:
-        checks.append({
-            "check": "DigiLocker Document Authenticity",
-            "status": "FLAG",
-            "source": "DigiLocker Pull API (Mock)",
-            "identifier": "Selected document(s)",
-            "value": "Authenticity could not be confirmed",
-            "expected": "Verified",
-            "note": "DigiLocker pull verification returned an inconclusive result. Manual document authenticity check recommended.",
-        })
+    # -- Issuer digital signatures (what DigiLocker would guarantee for pulled documents) --
+    sig_rows = []
+    for fa in db.query(ForensicAnalysis).join(Document, ForensicAnalysis.document_id == Document.id).filter(Document.bidder_id == bidder.id):
+        for sig in (fa.structure or {}).get("signatures") or []:
+            sig_rows.append(sig)
+    broken = [x for x in sig_rows if x.get("intact") is False or x.get("modification_level") not in (None, "NONE", "LTA_UPDATES")]
+    trusted = [x for x in sig_rows if x.get("intact") and x.get("trusted")]
+    if broken:
+        status, value, note = "FLAG", f"{len(broken)} signed document(s) changed after signing", \
+            "At least one digitally signed document was altered after the issuer signed it."
+    elif trusted:
+        status, value, note = "PASS", f"{len(trusted)} document(s) carry an intact signature from a trusted issuer", \
+            "Signed by a trusted issuer and unchanged since signing."
     else:
-        checks.append({
-            "check": "DigiLocker Document Authenticity",
-            "status": "PENDING",
-            "source": "DigiLocker Pull API (Mock)",
-            "identifier": "Not initiated",
-            "value": "Not requested",
-            "expected": "Verified",
-            "note": "DigiLocker verification not yet initiated. Bidder can submit documents via DigiLocker for cryptographic authenticity.",
-        })
+        status, value, note = "UNMEASURED", "No digitally signed documents", \
+            "None of the uploads is digitally signed. DigiLocker-pulled copies would carry the issuer's signature."
+    checks.append({
+        "check": "Issuer Digital Signature", "status": status, "source": "PDF signature validation (pyHanko)",
+        "identifier": f"{len(sig_rows)} signature(s) found", "value": value, "expected": "Intact, trusted signature", "note": note,
+    })
 
     # -- Forensic integrity --
     forensic_reports = (

@@ -12,6 +12,7 @@ from app.models.decision import OfficerDecision  # noqa
 from app.models.audit import AuditLog  # noqa
 from app.models.notification import Notification  # noqa
 from app.models.bidmark import BidmarkAnalysis  # noqa
+from app.models.telemetry import SubmissionEvent  # noqa
 
 __all__ = [
     "Base",
@@ -40,4 +41,5 @@ __all__ = [
     "AuditLog",
     "Notification",
     "BidmarkAnalysis",
+    "SubmissionEvent",
 ]

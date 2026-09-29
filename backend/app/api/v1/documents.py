@@ -1,6 +1,6 @@
 import os
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.models.tender import Tender
 from app.models.user import User, UserRole
 from app.schemas.document import DocumentExtractionOut, DocumentOut, VerificationResultOut
 from app.services import bidder_portal_service as portal
+from app.services import telemetry_service as telemetry
 from app.services.audit_service import log_action
 from app.services.document_service import extract_document, save_document, verify_document
 from app.services.notification_service import notify
@@ -27,6 +28,7 @@ MAX_BYTES = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
 @router.post("/api/v1/bidders/{bidder_id}/documents")
 def upload_document(
     bidder_id: str,
+    request: Request,
     category: str = Form(...),
     tender_id: str | None = Form(None),
     file: UploadFile = File(...),
@@ -57,6 +59,8 @@ def upload_document(
             portal.ensure_enrolled(db, bidder, tender)
 
     document = save_document(db, bidder_id, category, file, tender_id)
+    if current_user.role == UserRole.BIDDER:
+        telemetry.record(db, request, "DOCUMENT_UPLOAD", user_id=current_user.id, bidder_id=bidder_id, tender_id=tender_id)
     log_action(
         db, action="DOCUMENT_UPLOAD", actor=current_user, entity_type="Document", entity_id=document.id,
         bidder_id=bidder_id, tender_id=tender_id, description=f"Uploaded {category} document: {document.original_filename}",

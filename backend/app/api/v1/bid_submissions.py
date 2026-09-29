@@ -13,7 +13,7 @@ Mock Government Verification API Gateway, exactly as for any other evidence.
 """
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ from app.models.tender import Tender, TenderBidder
 from app.models.user import User, UserRole
 from app.schemas.bid import BidSubmissionCreate, BidSubmissionOut
 from app.services import bidder_portal_service as portal
+from app.services import telemetry_service as telemetry
 from app.services.audit_service import log_action
 from app.services.notification_service import notify
 from app.services.pdf_service import build_bid_receipt_pdf
@@ -38,6 +39,7 @@ def create_or_update_bid_submission(
     tender_id: str,
     bidder_id: str,
     payload: BidSubmissionCreate,
+    request: Request,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_any),
 ):
@@ -77,6 +79,8 @@ def create_or_update_bid_submission(
         for field, value in data.items():
             setattr(submission, field, value)
 
+    if current_user.role == UserRole.BIDDER:
+        telemetry.record(db, request, "BID_SUBMIT", user_id=current_user.id, bidder_id=bidder_id, tender_id=tender_id, commit=False)
     db.commit()
     db.refresh(submission)
     log_action(
