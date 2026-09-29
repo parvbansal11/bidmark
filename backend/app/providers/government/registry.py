@@ -4,6 +4,7 @@ application talks to. It hides the fact that there are 13 separate mock
 registries behind one lookup, and is the seam where real integrations would
 be plugged in later.
 """
+from app.providers.government import sandbox
 from app.providers.government.debarment import DebarmentProvider
 from app.providers.government.digilocker import DigiLockerProvider
 from app.providers.government.epfo import EPFOProvider
@@ -43,7 +44,7 @@ class GovernmentVerificationProvider:
         provider = PROVIDERS.get(registry.upper())
         if not provider:
             raise ValueError(f"Unknown government registry: {registry}")
-        return provider.verify(identifier, context)
+        return sandbox.lookup(registry, identifier) or provider.verify(identifier, context)
 
     @staticmethod
     def available_registries() -> list[str]:

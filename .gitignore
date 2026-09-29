@@ -19,3 +19,4 @@ frontend/.env
 backend/.venv/
 backend/trust-roots/
 backend/demo-ca/
+backend/data/sandbox_registry.json

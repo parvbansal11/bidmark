@@ -235,6 +235,7 @@ def run_cross_check(db: Session, bidder_id: str, tender_id: str) -> dict:
     ref_date = bid_at.date() if bid_at else date.today()
     ref_label = "bid submission date" if bid and bid.submitted_at else "bid deadline" if tender and tender.deadline else "today"
     validity_days = (tender.bid_validity_days if tender else None) or 0
+    required = {r.evidence_type for r in (tender.requirements if tender else [])}
     for cat, doc in by_category.items():
         until_raw = doc.extraction.validity_date if doc.extraction else None
         if not until_raw:
@@ -244,12 +245,15 @@ def run_cross_check(db: Session, bidder_id: str, tender_id: str) -> dict:
         except ValueError:
             continue
         if until < ref_date:
-            cc = add_result("validity", f"{cat}<->BID_DATE", [cat, "BID"], [until.isoformat(), ref_date.isoformat()], "MAJOR_MISMATCH", True)
+            needed = cat in required
+            cc = add_result("validity", f"{cat}<->BID_DATE", [cat, "BID"], [until.isoformat(), ref_date.isoformat()], "MAJOR_MISMATCH", needed)
             add_discrepancy("EXPIRED_AT_BID_DATE",
                             f"The {cat} document expired on {until.isoformat()}, {(ref_date - until).days} day(s) before the {ref_label} "
-                            f"({ref_date.isoformat()}). It was not valid when the bid was made.",
-                            "HIGH", cat, -20, cc, code="EXPIRED_AT_BID_DATE", evidence=[pin(doc, "valid_until")])
-        elif validity_days and (until - ref_date).days < validity_days:
+                            f"({ref_date.isoformat()}). It was not valid when the bid was made."
+                            + ("" if needed else " This tender does not require it."),
+                            "HIGH" if needed else "LOW", cat, -20 if needed else 0, cc, code="EXPIRED_AT_BID_DATE",
+                            evidence=[pin(doc, "valid_until")])
+        elif validity_days and cat in required and (until - ref_date).days < validity_days:
             cc = add_result("validity", f"{cat}<->BID_VALIDITY", [cat, "BID"], [until.isoformat(), ref_date.isoformat()], "MINOR_VARIATION", True)
             add_discrepancy("EXPIRES_DURING_BID_VALIDITY",
                             f"The {cat} document expires on {until.isoformat()}, inside the {validity_days}-day bid validity period.",

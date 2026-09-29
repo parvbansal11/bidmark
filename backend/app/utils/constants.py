@@ -28,7 +28,7 @@ REQUIRED_FIELDS_BY_CATEGORY = {
     "NSIC": ["registration_number"],
     "EPFO": ["registration_number"],
     "ESIC": ["registration_number"],
-    "OEM_AUTHORIZATION": ["registration_number"],
+    "OEM_AUTHORIZATION": ["company_name"],
     "LOCAL_CONTENT": ["registration_number"],
     "EXPERIENCE_CERTIFICATE": ["company_name"],
     "FINANCIAL": ["company_name", "turnover_crore"],

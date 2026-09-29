@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     # When a file has no readable text, fabricate fields from the bidder profile
     # (flagged simulated) instead of leaving them empty. Off in production.
     SIMULATE_UNREADABLE_DOCUMENTS: bool = True
+    SANDBOX_REGISTRY_PATH: str = "./data/sandbox_registry.json"
     MAX_UPLOAD_SIZE_MB: int = 15
 
     MOCK_GOVERNMENT_API: bool = True

@@ -13,6 +13,7 @@ from app.models.audit import AuditLog  # noqa
 from app.models.notification import Notification  # noqa
 from app.models.bidmark import BidmarkAnalysis  # noqa
 from app.models.telemetry import SubmissionEvent  # noqa
+from app.models.case import BidCase, Clarification, FindingDisposition  # noqa
 
 __all__ = [
     "Base",
@@ -42,4 +43,7 @@ __all__ = [
     "Notification",
     "BidmarkAnalysis",
     "SubmissionEvent",
+    "BidCase",
+    "Clarification",
+    "FindingDisposition",
 ]

@@ -197,7 +197,8 @@ def price_screens(prices: dict[str, float], estimate: float | None = None) -> di
     sd = statistics.pstdev(vals)
     cv = sd / mean if mean else 0
     losers = vals[1:]
-    sd_losers = statistics.pstdev(losers) if len(losers) > 1 else 0
+    # Relative distance needs a spread among the losing bids; two points don't make one.
+    sd_losers = statistics.pstdev(losers) if len(losers) >= 3 else 0
     rd = (vals[1] - vals[0]) / sd_losers if sd_losers else None
     ratios = [vals[i + 1] / vals[i] for i in range(n - 1) if vals[i]]
     out.update({"mean": round(mean, 2), "cv": round(cv, 4), "relative_distance": round(rd, 3) if rd is not None else None,

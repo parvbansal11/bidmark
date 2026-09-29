@@ -97,11 +97,27 @@ def _evaluate_debarment(db: Session, bidder: Bidder, req: Requirement) -> tuple[
 def _evaluate_turnover(db: Session, bidder: Bidder, tender_id: str, req: Requirement) -> tuple[str, list, str]:
     bid = db.query(BidSubmission).filter(BidSubmission.bidder_id == bidder.id, BidSubmission.tender_id == tender_id).first()
     declared = bid.declared_turnover_crore if bid else None
-    if declared is None:
-        return ("PENDING" if req.is_mandatory else "NOT_APPLICABLE"), [], "No declared turnover on file for this bid."
     threshold = req.threshold or 0
+    # The certificate is the evidence; the figure typed into the bid form is a claim.
+    cert = (
+        db.query(Document)
+        .filter(Document.bidder_id == bidder.id, Document.category == "FINANCIAL", Document.is_deleted == False)  # noqa: E712
+        .order_by(Document.created_at.desc())
+        .first()
+    )
+    ext = cert.extraction if cert else None
+    documented = ext.turnover_crore if ext and not (ext.raw_extracted_fields or {}).get("simulated") else None
+    if documented is not None:
+        evidence = [f"Turnover certificate shows ₹{documented} crore."]
+        if declared is not None and abs(declared - documented) > 0.1 * max(declared, documented):
+            evidence.append(f"The bid form declares ₹{declared} crore, which the certificate does not support.")
+        if documented >= threshold:
+            return "VERIFIED", evidence, f"Certified turnover meets the minimum of ₹{threshold} crore."
+        return "FAILED", evidence, f"Certified turnover ₹{documented} crore is below the minimum of ₹{threshold} crore."
+    if declared is None:
+        return ("PENDING" if req.is_mandatory else "NOT_APPLICABLE"), [], "No turnover certificate or declared turnover on file for this bid."
     if declared >= threshold:
-        return "VERIFIED", [f"Declared turnover ₹{declared} crore meets the minimum of ₹{threshold} crore."], "Turnover requirement satisfied."
+        return "REQUIRES_REVIEW", [f"Declared turnover ₹{declared} crore meets the minimum of ₹{threshold} crore, but no readable turnover certificate backs it."], "Turnover is declared, not evidenced."
     return "FAILED", [f"Declared turnover ₹{declared} crore is below the minimum of ₹{threshold} crore."], "Turnover requirement not satisfied."
 
 

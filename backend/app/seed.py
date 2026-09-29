@@ -1,439 +1,286 @@
-"""
-Demo data seeder for the GeM Bid Compliance Verification Platform.
+"""Demo dataset. Every document is a real PDF that the pipeline reads and
+inspects; nothing about a bidder's outcome is decided by a random number.
 
-Creates:
-  - Demo login accounts (admin, procurement officer, one bidder login)
-  - 3 fictional tenders, each with different requirements
-  - 10 fictional bidders covering a spread of compliance/forensic/behavioral
-    scenarios, including the "Alpha Energy Solutions" showcase bidder with
-    multiple simultaneous issues (see PS spec section 37)
-  - Uploaded documents, and a full run of every engine (extraction,
-    verification, cross-check, compliance, forensics, fingerprinting,
-    behavior) so the demo opens with fully populated data.
+Tender CPCL/2026/PUMP/089, six bidders:
+  Alpha Pumps        clean; GST certificate digitally signed by a trusted issuer
+  Bharat Flowtech    OEM authorization lapsed before the bid date; Udyam
+                     certificate is issued to "Bharat Flowtek" (look-alike)
+  Coastal Hydraulics OEM validity retyped over the original date
+  Deccan Pump Works  GSTIN fails its check digit; CIN year contradicts the
+                     declared incorporation date; GST PDF re-saved in iLovePDF
+  Eastern Fluid +    shared director, phone, device and PDF author; bids three
+  Eastline Supplies  minutes apart; Eastline's CA-signed turnover certificate
+                     was edited after signing to lift 4.10 crore to 6.10 crore
+Tender CPCL/2026/VALVE/092 has three mostly clean bidders, one already decided.
+Tender CPCL/2026/SOLAR/098 is a draft with no requirements (an Admin task).
 
-Run with:  python -m app.seed   (from the backend/ directory, venv active)
+Run from backend/:  python -m app.seed
 """
+import hashlib
 import os
+import shutil
 import sys
 from datetime import date, datetime, timedelta, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.core.config import settings
-from app.core.database import Base, SessionLocal, engine
-from app.core.security import hash_password
-from app.engines.behavioral_engine import analyze_behavior
-from app.engines.compliance_engine import evaluate_compliance
-from app.engines.cross_check_engine import run_cross_check
-from app.engines.fingerprint_engine import compare_bidder_documents_across_tender, generate_fingerprint
-from app.engines.forensics_engine import analyze_document
-from app.models.bid import BidSubmission
-from app.models.bidder import Bidder
-from app.models.decision import OfficerDecision
-from app.models.document import Document
-from app.models.tender import Requirement, Tender, TenderBidder
-from app.models.user import User, UserRole
-from app.providers.government.base import pick_outcome
-from app.providers.government.debarment import DebarmentProvider
-from app.services.audit_service import log_action
-from app.services.document_service import extract_document, verify_document
-from app.services.recommendation_service import build_recommendation
-from app.utils.ids import new_id
+from app.core.config import settings  # noqa: E402
+from app.core.database import Base, SessionLocal, engine  # noqa: E402
+from app.core.security import hash_password  # noqa: E402
+from app.demo import documents as D  # noqa: E402
+from app.forensics.identifiers import make_gstin  # noqa: E402
+from app.models.bid import BidSubmission  # noqa: E402
+from app.models.bidder import Bidder  # noqa: E402
+from app.models.document import Document  # noqa: E402
+from app.models.telemetry import SubmissionEvent  # noqa: E402
+from app.models.tender import Requirement, Tender, TenderBidder  # noqa: E402
+from app.models.user import User, UserRole  # noqa: E402
+from app.providers.government import sandbox  # noqa: E402
+from app.services import case_service as cs  # noqa: E402
+from app.services.audit_service import log_action  # noqa: E402
+from app.services.telemetry_service import _h  # noqa: E402
+from app.utils.ids import new_id  # noqa: E402
 
 NOW = datetime.now(timezone.utc)
+TODAY = NOW.date()
 
 
-def find_identifier(prefix: str, registry_salt: str, desired_outcome: str, tries: int = 5000) -> str:
-    for i in range(tries):
-        candidate = f"{prefix}{i:05d}"
-        if pick_outcome(candidate, registry_salt) == desired_outcome:
-            return candidate
-    raise RuntimeError(f"Could not find identifier for {registry_salt}->{desired_outcome}")
+def dmy(d: date) -> str:
+    return d.strftime("%d/%m/%Y")
 
 
-def find_debarred_identifier(prefix: str, tries: int = 5000) -> str:
-    provider = DebarmentProvider()
-    for i in range(tries):
-        candidate = f"{prefix}{i:05d}"
-        if provider.verify(candidate)["data"]["is_currently_debarred"]:
-            return candidate
-    raise RuntimeError("Could not find a debarred identifier")
+BIDDERS = [
+    dict(key="alpha", name="Alpha Pumps & Engineering Pvt Ltd", pan="AABCA4821K", state="33", cin="U29120TN2011PTC081234",
+         inc=date(2011, 6, 14), udyam="UDYAM-TN-02-0012345", addr="12 Industrial Estate, Guindy, Chennai, Tamil Nadu 600032",
+         email="alpha@alphaindia.in", phone="+91 44 2250 1180", directors=[("Meena Iyer", "07123456"), ("Arjun Iyer", "07123457")],
+         turnover=("Rs 42.10 Crore", "Rs 48.75 Crore"), device="alpha-laptop", ip="49.207.10.21"),
+    dict(key="bharat", name="Bharat Flowtech Pvt Ltd", pan="AAFCB7734M", state="33", cin="U29130TN2014PTC095512",
+         inc=date(2014, 2, 3), udyam="UDYAM-TN-06-0044180", addr="Plot 44, SIDCO Industrial Estate, Ambattur, Chennai, Tamil Nadu 600098",
+         email="bharat@bharatflowtech.in", phone="+91 44 2625 7710", directors=[("Karthik Raman", "08011223")],
+         turnover=("Rs 11.40 Crore", "Rs 13.20 Crore"), device="bharat-desktop", ip="117.222.4.18"),
+    dict(key="coastal", name="Coastal Hydraulics Ltd", pan="AAHCC2210Q", state="33", cin="U29120TN2008PLC067781",
+         inc=date(2008, 9, 22), udyam=None, addr="7 Harbour Road, Thoothukudi, Tamil Nadu 628001",
+         email="tenders@coastalhydraulics.in", phone="+91 461 232 9900", directors=[("S. Pandian", "05544332")],
+         turnover=("Rs 22.00 Crore", "Rs 24.60 Crore"), device="coastal-pc", ip="103.44.12.77"),
+    dict(key="deccan", name="Deccan Pump Works Pvt Ltd", pan="AABCD5678P", state="27", cin="U29120MH2012PTC231190",
+         inc=date(2015, 1, 9), udyam=None, addr="Gat 211, Chakan MIDC, Pune, Maharashtra 410501",
+         email="bids@deccanpumps.in", phone="+91 20 6612 4400", directors=[("Rohit Kulkarni", "06677889")],
+         turnover=("Rs 8.30 Crore", "Rs 9.10 Crore"), device="deccan-laptop", ip="182.70.3.9", bad_gstin="27AABCD5678P1ZQ"),
+    dict(key="eastern", name="Eastern Fluid Systems Pvt Ltd", pan="AAKCE3391H", state="33", cin="U29120TN2017PTC118804",
+         inc=date(2017, 11, 2), udyam=None, addr="21 Second Main Road, Perungudi, Chennai, Tamil Nadu 600096",
+         email="eastern.fluid@gmail.com", phone="+91 98410 55123", directors=[("Suresh Kumar Rao", "08812345"), ("Lakshmi Rao", "08812346")],
+         turnover=("Rs 7.90 Crore", "Rs 8.40 Crore"), device="suresh-laptop", ip="122.164.88.40", author="SURESH-LAPTOP"),
+    dict(key="eastline", name="Eastline Industrial Supplies Pvt Ltd", pan="AALCE8812J", state="33", cin="U51909TN2019PTC129931",
+         inc=date(2019, 4, 18), udyam=None, addr="4 Nehru Street, Velachery, Chennai, Tamil Nadu 600042",
+         email="eastline.supplies@gmail.com", phone="+91 98410 55123", directors=[("Suresh Kumar Rao", "08812345")],
+         turnover=("Rs 3.80 Crore", "Rs 4.10 Crore"), device="suresh-laptop", ip="122.164.88.40", author="SURESH-LAPTOP"),
+    dict(key="kaveri", name="Kaveri Valves Pvt Ltd", pan="AAMCK4410D", state="29", cin="U29140KA2010PTC052210",
+         inc=date(2010, 3, 30), udyam="UDYAM-KA-03-0098812", addr="88 Peenya Industrial Area, Bengaluru, Karnataka 560058",
+         email="sales@kaverivalves.in", phone="+91 80 2839 4411", directors=[("Anand Rao", "04455667")],
+         turnover=("Rs 15.20 Crore", "Rs 17.80 Crore"), device="kaveri-pc", ip="106.51.20.3"),
+]
+
+PUMP_PRICES = {"alpha": 10840000, "bharat": 10590000, "coastal": 11100000, "deccan": 11550000, "eastern": 10120000, "eastline": 10980000}
+VALVE_PRICES = {"alpha": 3420000, "bharat": 3310000, "kaveri": 3375000}
 
 
-# Categories whose mock verification identifier is generated fresh per
-# *document* (not derived from a stable bidder field), which would otherwise
-# make demo outcomes non-reproducible across seed runs. We stabilize these to
-# a deterministic VERIFIED identifier unless a scenario deliberately wants a
-# different outcome.
-_RANDOM_CATEGORY_SALT = {"NSIC": "nsic", "EPFO": "epfo", "ESIC": "esic", "STARTUP_INDIA": "startup", "OEM_AUTHORIZATION": "oem"}
+def _reset():
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    for d in (settings.UPLOAD_DIRECTORY,):
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        os.makedirs(d, exist_ok=True)
 
 
-def stabilize_random_categories(db, bidder, skip_categories=()):
-    for cat, salt in _RANDOM_CATEGORY_SALT.items():
-        if cat in skip_categories:
-            continue
-        doc = db.query(Document).filter(Document.bidder_id == bidder.id, Document.category == cat).order_by(Document.created_at.desc()).first()
-        if doc and doc.extraction:
-            identifier = find_identifier(f"{salt[:3].upper()}{bidder.id[:6]}", salt, "VERIFIED")
-            doc.extraction.registration_number = identifier
-            db.commit()
-
-
-def add_document(db, bidder: Bidder, category: str, tender_id: str | None, content: bytes, filename: str) -> Document:
-    bidder_dir = os.path.join(settings.UPLOAD_DIRECTORY, bidder.id)
-    os.makedirs(bidder_dir, exist_ok=True)
-    stored_filename = f"{new_id()}_{filename}"
-    file_path = os.path.join(bidder_dir, stored_filename)
-    with open(file_path, "wb") as fh:
-        fh.write(content)
-    import hashlib
-
-    doc = Document(
-        bidder_id=bidder.id, tender_id=tender_id, category=category,
-        original_filename=filename, stored_filename=stored_filename, file_path=file_path,
-        mime_type="text/plain" if filename.endswith(".txt") else "application/pdf",
-        file_size_bytes=len(content), file_hash_sha256=hashlib.sha256(content).hexdigest(),
-        uploaded_at=NOW, status="UPLOADED",
-    )
+def _store(db, bidder: Bidder, category: str, pdf: bytes, filename: str) -> Document:
+    folder = os.path.join(settings.UPLOAD_DIRECTORY, bidder.id)
+    os.makedirs(folder, exist_ok=True)
+    stored = f"{new_id()}.pdf"
+    path = os.path.join(folder, stored)
+    with open(path, "wb") as fh:
+        fh.write(pdf)
+    doc = Document(bidder_id=bidder.id, tender_id=None, category=category, original_filename=filename, stored_filename=stored,
+                   file_path=path, mime_type="application/pdf", file_size_bytes=len(pdf),
+                   file_hash_sha256=hashlib.sha256(pdf).hexdigest(), uploaded_at=NOW - timedelta(days=2), status="UPLOADED")
     db.add(doc)
     db.commit()
-    db.refresh(doc)
     return doc
 
 
-def generic_doc_text(category: str, company: str) -> bytes:
-    return f"{category} CERTIFICATE\nIssued to: {company}\nThis is a prototype demo document for {category}.".encode()
+def _documents(b: dict) -> dict[str, tuple[bytes, str]]:
+    name, gstin = b["name"], b.get("bad_gstin") or make_gstin(b["state"], b["pan"])
+    author = b.get("author", "Issuing Portal")
+    docs: dict[str, tuple[bytes, str]] = {}
+
+    gst = D.gst(name, gstin, b["addr"], dmy(b["inc"] + timedelta(days=200)),
+                constitution="Public Limited Company" if "PLC" in b["cin"] else "Private Limited Company")
+    if b["key"] == "alpha":
+        docs["GST"] = (D.sign(gst.pdf), "GST_REG06_Alpha.pdf")
+    elif b["key"] == "deccan":
+        docs["GST"] = (D.set_metadata(gst.pdf, {"/Producer": "iLovePDF", "/ModDate": "D:20230115093000+05'30'"}), "GST_Certificate_Deccan.pdf")
+    else:
+        docs["GST"] = (gst.pdf, f"GST_{b['key']}.pdf")
+
+    docs["MCA"] = (D.incorporation(name, b["cin"], dmy(b["inc"])).pdf, f"COI_{b['key']}.pdf")
+
+    oem_until = TODAY + timedelta(days=400)
+    if b["key"] == "bharat":
+        oem_until = TODAY - timedelta(days=6)
+    oem = D.oem(name, "Synthetic Pumps Manufacturing Co", "Centrifugal process pumps", dmy(oem_until - timedelta(days=365)),
+                dmy(oem_until), author=author)
+    if b["key"] == "coastal":
+        lapsed = TODAY - timedelta(days=45)
+        oem = D.oem(name, "Synthetic Pumps Manufacturing Co", "Centrifugal process pumps", dmy(lapsed - timedelta(days=365)), dmy(lapsed))
+        docs["OEM_AUTHORIZATION"] = (D.retype(oem, "Valid Upto", dmy(lapsed.replace(year=lapsed.year + 2))), "OEM_Authorization_Coastal.pdf")
+    else:
+        docs["OEM_AUTHORIZATION"] = (oem.pdf, f"OEM_{b['key']}.pdf")
+
+    fy = [("FY 2023-24", b["turnover"][0]), ("FY 2024-25", b["turnover"][1])]
+    ca = D.turnover(name, fy, f"25{b['pan'][:4]}88AB{b['pan'][5:9]}", dmy(TODAY - timedelta(days=90)), author=author)
+    if b["key"] == "eastline":
+        signed = D.Doc(ca.kind, D.sign(ca.pdf), ca.fields)
+        docs["FINANCIAL"] = (D.retype(signed, "Average Annual Turnover", "Rs 6.10 Crore", font="Helvetica-Oblique"), "CA_Turnover_Eastline.pdf")
+    else:
+        docs["FINANCIAL"] = (ca.pdf, f"Turnover_{b['key']}.pdf")
+
+    if b["udyam"]:
+        u_name = "Bharat Flowtek Pvt Ltd" if b["key"] == "bharat" else name
+        docs["UDYAM"] = (D.udyam(u_name, b["udyam"], b["addr"], dmy(b["inc"] + timedelta(days=2000))).pdf, f"Udyam_{b['key']}.pdf")
+    return docs
 
 
-OEM_LETTER_TEMPLATE = (
-    "OEM AUTHORIZATION LETTER\n"
-    "We, Emerson Process Management, hereby authorize {company} (PAN {pan}) as our "
-    "authorized channel partner for sales and service of process control instrumentation "
-    "in India for the period 2025-2027. This letter is issued for participation in "
-    "government tenders including GeM procurement.\n"
-    "Authorized scope: Sales, Service & Spares.\n"
-)
+def _registry(b: dict) -> dict:
+    """What the sandbox registries hold for this bidder."""
+    rec = {"GST": {}, "PAN": {}, "MCA": {}, "UDYAM": {}, "DEBARMENT": {}}
+    if not b.get("bad_gstin"):
+        rec["GST"][make_gstin(b["state"], b["pan"])] = {"status": "VERIFIED", "legal_name": b["name"], "registration_status": "Active"}
+    rec["PAN"][b["pan"]] = {"status": "VERIFIED", "legal_name": b["name"], "pan_status": "ACTIVE"}
+    rec["MCA"][b["cin"]] = {"status": "VERIFIED", "company_name": b["name"], "company_status": "Active",
+                            "directors": [n for n, _ in b["directors"]]}
+    if b["udyam"]:
+        rec["UDYAM"][b["udyam"]] = {"status": "VERIFIED", "legal_name": "Bharat Flowtek Pvt Ltd" if b["key"] == "bharat" else b["name"],
+                                    "enterprise_category": "Small"}
+    rec["DEBARMENT"][b["cin"]] = {"status": "VERIFIED", "is_currently_debarred": False, "debarment_records_found": 0,
+                                  "message": "No active debarment record in the sandbox list."}
+    return rec
 
 
-def run_full_pipeline(db, bidder: Bidder, tender_id: str, actor: User):
-    docs = db.query(Document).filter(Document.bidder_id == bidder.id, Document.is_deleted == False).all()  # noqa: E712
-    for doc in docs:
-        extract_document(db, doc)
-
-    yield_point(db, bidder, tender_id)  # allow scenario-specific overrides between extract and verify
-
-    for doc in docs:
-        verify_document(db, doc)
-        analyze_document(db, doc)
-        generate_fingerprint(db, doc)
-
-    run_cross_check(db, bidder.id, tender_id)
-    evaluate_compliance(db, bidder.id, tender_id)
-    analyze_behavior(db, bidder.id, tender_id)
-    log_action(db, action="WORKFLOW_COMPLETED", actor=actor, bidder_id=bidder.id, tender_id=tender_id, description=f"Seed pipeline completed for {bidder.company_name}")
+def _tender(db, number, title, value, deadline_days, status, reqs, creator) -> Tender:
+    t = Tender(tender_number=number, title=title, estimated_value=value, published_at=NOW - timedelta(days=10),
+               deadline=NOW + timedelta(days=deadline_days), status=status, created_by=creator.id, tender_type="OPEN_TENDER",
+               tender_category="GOODS", tender_mode="ONLINE", bid_system="TWO_PACKET", location="Manali Refinery, Chennai",
+               bid_validity_days=90, gem_tender_id=f"GEM/2026/B/{int(hashlib.sha1(number.encode()).hexdigest(), 16) % 10**7}")
+    db.add(t)
+    db.commit()
+    for rtype, desc, mandatory, threshold, unit, evidence in reqs:
+        db.add(Requirement(tender_id=t.id, requirement_type=rtype, description=desc, is_mandatory=mandatory, threshold=threshold,
+                           threshold_unit=unit, weight=1.0, evidence_type=evidence))
+    db.commit()
+    return t
 
 
-_overrides = {}
+def _events(db, user: User, bidder: Bidder, tender: Tender, b: dict, at: datetime):
+    for event, when in (("LOGIN", at - timedelta(minutes=20)), ("DOCUMENT_UPLOAD", at - timedelta(minutes=12)), ("BID_SUBMIT", at)):
+        net = ".".join(b["ip"].split(".")[:3]) + ".0/24"
+        db.add(SubmissionEvent(user_id=user.id, bidder_id=bidder.id, tender_id=tender.id, event=event, ip_hash=_h(b["ip"]),
+                               network_hash=_h(net), device_hash=_h(b["device"]), user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                               timezone="Asia/Kolkata", interaction={"paste_count": 6 if b.get("author") else 0}, created_at=when,
+                               paste_count=6 if b.get("author") else 0))
+    db.commit()
 
 
-def yield_point(db, bidder, tender_id):
-    fn = _overrides.get(bidder.id)
-    skip = _skip_stabilize.get(bidder.id, ())
-    stabilize_random_categories(db, bidder, skip_categories=skip)
-    if fn:
-        fn(db, bidder, tender_id)
-
-
-_skip_stabilize: dict[str, tuple] = {}
-
-
-def main():
-    print("Creating tables...")
-    Base.metadata.create_all(bind=engine)
+def seed():
+    _reset()
     db = SessionLocal()
-
-    print("Seeding users...")
-    admin = User(email="admin@cpcl.gov.in", hashed_password=hash_password("Admin@123"), full_name="System Administrator", role=UserRole.ADMIN)
-    officer = User(email="officer@cpcl.gov.in", hashed_password=hash_password("Officer@123"), full_name="R. Krishnan, Procurement Officer", role=UserRole.PROCUREMENT_OFFICER)
-    bidder_user = User(email="bidder@example.com", hashed_password=hash_password("Bidder@123"), full_name="Sneha Rani", role=UserRole.BIDDER)
-    db.add_all([admin, officer, bidder_user])
+    admin = User(email="admin@cpcl.gov.in", hashed_password=hash_password("Admin@123"), full_name="S. Venkatesh, Administrator", role=UserRole.ADMIN)
+    officer = User(email="officer@cpcl.gov.in", hashed_password=hash_password("Officer@123"), full_name="Rajesh Kumar, Procurement Officer", role=UserRole.PROCUREMENT_OFFICER)
+    auditor = User(email="auditor@cpcl.gov.in", hashed_password=hash_password("Auditor@123"), full_name="Priya Natarajan, Vigilance", role=UserRole.AUDITOR)
+    db.add_all([admin, officer, auditor])
     db.commit()
+    log_action(db, "SEED", actor=admin, description="Demo dataset created")
 
-    print("Seeding tenders...")
-    tender1 = Tender(
-        tender_number="CPCL/GEM/2026/101", gem_tender_id="GEM/2026/B/1010101", title="Supply and Installation of Process Instrumentation & Control Valves",
-        description="Procurement of field instrumentation (transmitters, control valves) for the CPCL Manali refinery expansion.",
-        estimated_value=120000000, published_at=NOW - timedelta(days=20), deadline=NOW + timedelta(days=10),
-        status="ACTIVE", created_by=officer.id,
-        tender_type="OPEN_TENDER", tender_category="GOODS", tender_mode="ONLINE", bid_system="TWO_PACKET",
-        location="Chennai, Tamil Nadu", bid_validity_days=120,
-    )
-    tender2 = Tender(
-        tender_number="CPCL/GEM/2026/102", gem_tender_id="GEM/2026/B/1010102", title="Annual Maintenance Contract for Rotating Equipment",
-        description="AMC for pumps, compressors and turbines across CPCL process units.",
-        estimated_value=80000000, published_at=NOW - timedelta(days=15), deadline=NOW + timedelta(days=15),
-        status="ACTIVE", created_by=officer.id,
-        tender_type="LIMITED_TENDER", tender_category="SERVICES", tender_mode="ONLINE", bid_system="SINGLE_PACKET",
-        location="Chennai, Tamil Nadu", bid_validity_days=90,
-    )
-    tender3 = Tender(
-        tender_number="CPCL/GEM/2026/103", gem_tender_id="GEM/2026/B/1010103", title="Supply of Corrosion-Resistant Piping Systems",
-        description="Supply of CRA-lined piping systems for CPCL's crude distillation unit revamp.",
-        estimated_value=60000000, published_at=NOW - timedelta(days=30), deadline=NOW + timedelta(days=5),
-        status="ACTIVE", created_by=officer.id,
-        tender_type="OPEN_TENDER", tender_category="GOODS", tender_mode="ONLINE", bid_system="TWO_PACKET",
-        location="Chennai, Tamil Nadu", bid_validity_days=90,
-    )
-    db.add_all([tender1, tender2, tender3])
-    db.commit()
+    pump = _tender(db, "CPCL/2026/PUMP/089", "Procurement of High-Capacity Centrifugal Pumps", 12000000, 7, "ACTIVE", [
+        ("GST", "Valid GST registration", True, None, "NONE", "GST"),
+        ("PAN", "PAN of the bidding entity", False, None, "NONE", "PAN"),
+        ("MCA", "Certificate of incorporation", True, None, "NONE", "MCA"),
+        ("OEM_AUTHORIZATION", "Manufacturer's authorization valid on the bid date", True, None, "NONE", "OEM_AUTHORIZATION"),
+        ("TURNOVER", "Average annual turnover of at least 5 crore", True, 5, "CRORE", "FINANCIAL"),
+        ("UDYAM", "Udyam registration for MSE purchase preference", False, None, "NONE", "UDYAM"),
+        ("DEBARMENT", "Not debarred by any Central or State body", True, None, "BOOLEAN", "OTHER"),
+    ], admin)
+    valve = _tender(db, "CPCL/2026/VALVE/092", "Supply of Industrial Valves & Flanges", 3600000, 12, "ACTIVE", [
+        ("GST", "Valid GST registration", True, None, "NONE", "GST"),
+        ("MCA", "Certificate of incorporation", True, None, "NONE", "MCA"),
+        ("TURNOVER", "Average annual turnover of at least 2 crore", True, 2, "CRORE", "FINANCIAL"),
+        ("DEBARMENT", "Not debarred by any Central or State body", True, None, "BOOLEAN", "OTHER"),
+    ], admin)
+    _tender(db, "CPCL/2026/SOLAR/098", "Rooftop Solar PV Power Plant Installation", 8500000, 30, "DRAFT", [], admin)
 
-    def add_req(tender, rtype, desc, mandatory=True, threshold=None, unit=None, weight=1.0, evidence=None):
-        r = Requirement(tender_id=tender.id, requirement_type=rtype, description=desc, is_mandatory=mandatory, threshold=threshold, threshold_unit=unit, weight=weight, evidence_type=evidence or rtype)
-        db.add(r)
-        return r
-
-    for r in [
-        ("GST", "Valid GST registration required", True, None, None, 1, "GST"),
-        ("PAN", "Valid PAN required", True, None, None, 1, "PAN"),
-        ("UDYAM", "Udyam/MSME registration required", True, None, None, 1, "UDYAM"),
-        ("MCA", "Valid company incorporation (MCA) record required", True, None, None, 1, "MCA"),
-        ("LOCAL_CONTENT", "Minimum local content of 50%", True, 50, "PERCENT", 2, "LOCAL_CONTENT"),
-        ("OEM_AUTHORIZATION", "OEM authorization letter required", True, None, None, 1.5, "OEM_AUTHORIZATION"),
-        ("DEBARMENT", "No active debarment/blacklisting", True, None, None, 1, "DEBARMENT"),
-    ]:
-        add_req(tender1, *r)
-
-    for r in [
-        ("GST", "Valid GST registration required", True, None, None, 1, "GST"),
-        ("PAN", "Valid PAN required", True, None, None, 1, "PAN"),
-        ("INCOME_TAX", "Income tax filing on record required", True, None, None, 1, "INCOME_TAX"),
-        ("EPFO", "EPFO compliance required", True, None, None, 1, "EPFO"),
-        ("ESIC", "ESIC compliance required", False, None, None, 0.5, "ESIC"),
-        ("NSIC", "Valid NSIC registration required", True, None, None, 1, "NSIC"),
-        ("TURNOVER", "Minimum annual turnover of ₹10 crore", True, 10, "CRORE", 1.5, "FINANCIAL"),
-        ("DEBARMENT", "No active debarment/blacklisting", True, None, None, 1, "DEBARMENT"),
-    ]:
-        add_req(tender2, *r)
-
-    for r in [
-        ("GST", "Valid GST registration required", True, None, None, 1, "GST"),
-        ("PAN", "Valid PAN required", True, None, None, 1, "PAN"),
-        ("MCA", "Valid company incorporation (MCA) record required", True, None, None, 1, "MCA"),
-        ("STARTUP_INDIA", "DPIIT Startup India recognition (optional bonus)", False, None, None, 0.5, "STARTUP_INDIA"),
-        ("LOCAL_CONTENT", "Minimum local content of 60%", True, 60, "PERCENT", 2, "LOCAL_CONTENT"),
-        ("DEBARMENT", "No active debarment/blacklisting", True, None, None, 1, "DEBARMENT"),
-    ]:
-        add_req(tender3, *r)
-    db.commit()
-
-    print("Seeding bidders...")
-
-    def make_bidder(name, legal_name=None, pan=None, gstin=None, cin=None, udyam=None, address=None, incorp_days_ago=1500):
-        b = Bidder(
-            company_name=name, legal_name=legal_name or name,
-            pan_number=pan, gstin=gstin, cin=cin, udyam_number=udyam,
-            registered_address=address or f"Industrial Estate, {['Delhi','Chennai','Mumbai','Pune','Coimbatore'][hash(name) % 5]}, India",
-            incorporation_date=(NOW - timedelta(days=incorp_days_ago)).date(),
-            contact_email=f"{name.split()[0].lower()}@example.com", status="ACTIVE",
-        )
-        db.add(b)
+    registry: dict[str, dict] = {k: {} for k in ("GST", "PAN", "MCA", "UDYAM", "DEBARMENT")}
+    people: dict[str, tuple[User, Bidder, dict]] = {}
+    for b in BIDDERS:
+        email = b["email"] if b["key"] in ("alpha", "bharat") else f"{b['key']}@bidder.example.in"
+        user = User(email=email, hashed_password=hash_password("Bidder@123"), full_name=f"{b['name']} (bid desk)", role=UserRole.BIDDER)
+        db.add(user)
         db.commit()
-        db.refresh(b)
-        return b
-
-    # Every identifier below is deliberately *found* rather than hand-typed so
-    # the seeded mock-government outcome is deterministic and reproducible:
-    # "clean" bidders get identifiers that resolve to VERIFIED / CLEAR on every
-    # relevant registry, and only the bidders with an intentional scenario get
-    # an identifier forced to a different outcome.
-    def vid(prefix, salt):
-        return find_identifier(prefix, salt, "VERIFIED")
-
-    def clean_cin(prefix):
-        """A CIN that resolves to MCA-VERIFIED and is not flagged by the debarment registry."""
-        provider = DebarmentProvider()
-        for i in range(5000):
-            candidate = f"{prefix}{i:05d}"
-            if pick_outcome(candidate, "mca") == "VERIFIED" and not provider.verify(candidate)["data"]["is_currently_debarred"]:
-                return candidate
-        raise RuntimeError("Could not find a clean CIN")
-
-    def paired_pan_gst(pan_prefix: str, state: str = "07", gst_outcome: str = "VERIFIED", pan_outcome: str = "VERIFIED"):
-        """Finds a PAN and a matching GSTIN that correctly embeds it (GSTIN
-        chars[2:12] == PAN, as the cross-check engine expects for a real
-        GST<->PAN relationship), while independently landing on the desired
-        mock-registry outcome for each. A GSTIN's only free characters given a
-        fixed PAN+state are a 1-digit entity code and a 1-char checksum (90
-        combinations), so when those 90 don't hit the desired GST outcome we
-        try the next candidate PAN instead."""
-        for p in range(2000):
-            pan_candidate = f"{pan_prefix}{p:05d}"
-            if pick_outcome(pan_candidate, "pan") != pan_outcome:
-                continue
-            for i in range(90):
-                candidate_gst = f"{state}{pan_candidate}{(i % 9) + 1}Z{i % 10}"
-                if pick_outcome(candidate_gst, "gst") == gst_outcome:
-                    return pan_candidate, candidate_gst
-        raise RuntimeError(f"Could not find a paired PAN/GSTIN for pan={pan_outcome} gst={gst_outcome}")
-
-    alpha_pan, alpha_gst = paired_pan_gst("AAPAN")
-    bright_pan, bright_gst = paired_pan_gst("BBPAN", state="27")
-    chennai_pan, chennai_gst = paired_pan_gst("CCPAN", state="33")
-    delta_pan, delta_gst = paired_pan_gst("DDPAN", gst_outcome="MISMATCH")
-    everest_pan, everest_gst = paired_pan_gst("EEPAN", state="19")
-    fortune_pan, fortune_gst = paired_pan_gst("FFPAN", state="24")
-    global_pan, global_gst = paired_pan_gst("GGPAN", state="29")
-    horizon_pan, horizon_gst = paired_pan_gst("HHPAN", state="06")
-    indus_pan, indus_gst = paired_pan_gst("IIPAN", state="09")
-    jupiter_pan, jupiter_gst = paired_pan_gst("JJPAN", pan_outcome="RECORD_NOT_FOUND")
-
-    alpha = make_bidder("Alpha Energy Solutions Pvt Ltd", pan=alpha_pan, gstin=alpha_gst, cin=clean_cin("U31900DL2015PTC28"), udyam=vid("UDYAMAA", "udyam"), address="Plot 12, Sector 24, Faridabad, Haryana", incorp_days_ago=1400)
-    # Link the demo bidder-portal login (Sneha Rani) to Alpha, the showcase
-    # bidder with the richest demonstrable data (local-content shortfall,
-    # a minor company-name variation discrepancy, and a shared OEM-authorization
-    # forensic flag with Horizon), so the Bidder Portal demo opens populated.
-    alpha.user_id = bidder_user.id
-    db.commit()
-    bright = make_bidder("Bright Turbo Industries Pvt Ltd", pan=bright_pan, gstin=bright_gst, cin=clean_cin("U29100MH2010PTC21"), udyam=vid("UDYAMBB", "udyam"), address="MIDC Industrial Area, Pune, Maharashtra", incorp_days_ago=5800)
-    chennai_fab = make_bidder("Chennai Fabricators Ltd", pan=chennai_pan, gstin=chennai_gst, cin=clean_cin("U27100TN2012PLC21"), address="Ambattur Industrial Estate, Chennai, Tamil Nadu", incorp_days_ago=5100)
-    delta = make_bidder("Delta Flow Controls Pvt Ltd", pan=delta_pan, gstin=delta_gst, cin=clean_cin("U31900DL2014PTC28"), udyam=vid("UDYAMDD", "udyam"), address="Okhla Industrial Area, Delhi", incorp_days_ago=4300)
-    everest = make_bidder("Everest Engineering Pvt Ltd", pan=everest_pan, gstin=everest_gst, cin=clean_cin("U29200WB2011PTC21"), udyam=vid("UDYAMEE", "udyam"), address="Salt Lake Industrial Park, Kolkata, West Bengal", incorp_days_ago=4900)
-    fortune = make_bidder("Fortune Pipeline Solutions Pvt Ltd", pan=fortune_pan, gstin=fortune_gst, cin=clean_cin("U27200GJ2009PTC21"), address="GIDC Industrial Estate, Ahmedabad, Gujarat", incorp_days_ago=6200)
-    global_valve = make_bidder("Global Valve Corp Pvt Ltd", pan=global_pan, gstin=global_gst, cin=clean_cin("U29290KA2013PTC21"), address="Peenya Industrial Area, Bengaluru, Karnataka", incorp_days_ago=4700)
-    horizon = make_bidder("Horizon Instruments Pvt Ltd", pan=horizon_pan, gstin=horizon_gst, cin=clean_cin("U33110HR2016PTC28"), udyam=vid("UDYAMHH", "udyam"), address="IMT Manesar, Gurugram, Haryana", incorp_days_ago=3500)
-    indus = make_bidder("Indus Controls & Automation Pvt Ltd", pan=indus_pan, gstin=indus_gst, cin=clean_cin("U72900UP2012PTC21"), address="Noida Sector 63, Uttar Pradesh", incorp_days_ago=5000)
-    jupiter = make_bidder(
-        "Jupiter Process Equipment Pvt Ltd",
-        pan=jupiter_pan,
-        gstin=jupiter_gst,
-        cin=find_debarred_identifier("U29290DL2017PTC28"),
-        address="Bawana Industrial Area, Delhi", incorp_days_ago=3100,
-    )
-
-    def link(bidder, tender, submitted_at=None, quoted_price=None, local_content=None, turnover=None, status="SUBMITTED"):
-        db.add(TenderBidder(tender_id=tender.id, bidder_id=bidder.id, invited_at=tender.published_at))
-        db.add(BidSubmission(
-            tender_id=tender.id, bidder_id=bidder.id, quoted_price=quoted_price,
-            local_content_percent=local_content, declared_turnover_crore=turnover,
-            submitted_at=submitted_at or (tender.published_at + timedelta(days=5)), status=status,
-        ))
+        bidder = Bidder(user_id=user.id, company_name=b["name"], legal_name=b["name"], pan_number=b["pan"],
+                        gstin=b.get("bad_gstin") or make_gstin(b["state"], b["pan"]), cin=b["cin"], udyam_number=b["udyam"],
+                        registered_address=b["addr"], incorporation_date=b["inc"], contact_email=b["email"], contact_phone=b["phone"],
+                        directors=[{"name": n, "din": din} for n, din in b["directors"]], status="ACTIVE")
+        db.add(bidder)
         db.commit()
+        for cat, (pdf, fname) in _documents(b).items():
+            _store(db, bidder, cat, pdf, fname)
+        for reg, recs in _registry(b).items():
+            registry[reg].update(recs)
+        people[b["key"]] = (user, bidder, b)
+    sandbox.write(registry)
 
-    # --- Alpha: the showcase bidder with multiple simultaneous issues ---
-    link(alpha, tender1, submitted_at=tender1.published_at + timedelta(minutes=45), quoted_price=11500000, local_content=35)
-    for cat in ("GST", "PAN", "UDYAM"):
-        add_document(db, alpha, cat, tender1.id, generic_doc_text(cat, alpha.company_name), f"{cat.lower()}_certificate.txt")
-    add_document(db, alpha, "MCA", tender1.id, generic_doc_text("MCA", alpha.company_name), "mca_incorporation.txt")
-    add_document(db, alpha, "OEM_AUTHORIZATION", tender1.id, OEM_LETTER_TEMPLATE.format(company=alpha.company_name, pan=alpha.pan_number).encode(), "oem_authorization_letter.txt")
-    add_document(db, alpha, "EXPERIENCE_CERTIFICATE", tender1.id, generic_doc_text("EXPERIENCE_CERTIFICATE", alpha.company_name), "experience_certificate.txt")
+    def bid(tender: Tender, key: str, price: int, at: datetime, declared: float):
+        user, bidder, b = people[key]
+        db.add(TenderBidder(tender_id=tender.id, bidder_id=bidder.id, invited_at=NOW - timedelta(days=9)))
+        db.add(BidSubmission(tender_id=tender.id, bidder_id=bidder.id, quoted_price=price, declared_turnover_crore=declared,
+                             local_content_percent=62.0, submitted_at=at, status="SUBMITTED"))
+        db.commit()
+        _events(db, user, bidder, tender, b, at)
+        case = cs.get_or_create(db, tender.id, bidder.id)
+        cs.submit(db, case, user)
+        return case
 
-    def alpha_overrides(db, bidder, tender_id):
-        mca_doc = db.query(Document).filter(Document.bidder_id == bidder.id, Document.category == "MCA").first()
-        if mca_doc and mca_doc.extraction:
-            mca_doc.extraction.company_name = "Alpha Energy Solution Pvt Ltd"  # deliberate minor variation
-            db.commit()
+    base = NOW - timedelta(hours=26)
+    declared = {"alpha": 45.4, "bharat": 12.3, "coastal": 23.3, "deccan": 8.7, "eastern": 8.15, "eastline": 6.1, "kaveri": 16.5}
+    offsets = {"alpha": 0, "bharat": 95, "coastal": 180, "deccan": 260, "eastern": 400, "eastline": 403}
+    cases = {}
+    for key, price in PUMP_PRICES.items():
+        cases[("pump", key)] = bid(pump, key, price, base + timedelta(minutes=offsets[key]), declared[key])
+        print(f"  screened {people[key][1].company_name}: {cases[('pump', key)].lane}")
+    for i, (key, price) in enumerate(VALVE_PRICES.items()):
+        cases[("valve", key)] = bid(valve, key, price, base + timedelta(hours=3, minutes=40 * i), declared[key])
 
-    _overrides[alpha.id] = alpha_overrides
+    # One finished case so the Auditor and bidder views have a decided record to show.
+    done = cases[("valve", "kaveri")]
+    cs.start_review(db, done, officer)
+    for f in done.findings:
+        if f["severity"] == "HIGH":
+            cs.dispose(db, done, officer, f["id"], "UPHELD", "Checked against the source document.")
+    cs.decide(db, done, officer, "QUALIFIED", "All mandatory requirements evidenced; no integrity findings.")
 
-    # --- Bright Turbo: fully compliant on two tenders ---
-    link(bright, tender1, submitted_at=tender1.published_at + timedelta(days=6), quoted_price=11800000, local_content=72)
-    link(bright, tender2, submitted_at=tender2.published_at + timedelta(days=4), quoted_price=9800000, turnover=45)
-    for cat, tender in [("GST", tender1), ("PAN", tender1), ("UDYAM", tender1), ("MCA", tender1), ("OEM_AUTHORIZATION", tender1)]:
-        add_document(db, bright, cat, tender.id, generic_doc_text(cat, bright.company_name), f"{cat.lower()}_certificate.txt")
-    for cat in ("GST", "PAN", "INCOME_TAX", "EPFO", "ESIC", "NSIC"):
-        add_document(db, bright, cat, tender2.id, generic_doc_text(cat, bright.company_name), f"{cat.lower()}_certificate.txt")
-    add_document(db, bright, "FINANCIAL", tender2.id, generic_doc_text("FINANCIAL", bright.company_name), "financials.txt")
-
-    # --- Chennai Fabricators: missing a mandatory document (no UDYAM) ---
-    link(chennai_fab, tender1, submitted_at=tender1.published_at + timedelta(days=8), quoted_price=12200000, local_content=55)
-    for cat in ("GST", "PAN", "MCA", "OEM_AUTHORIZATION"):
-        add_document(db, chennai_fab, cat, tender1.id, generic_doc_text(cat, chennai_fab.company_name), f"{cat.lower()}_certificate.txt")
-
-    # --- Delta Flow Controls: GST mismatch (forced via seeded mock outcome) ---
-    link(delta, tender1, submitted_at=tender1.published_at + timedelta(days=7), quoted_price=11950000, local_content=58)
-    for cat in ("GST", "PAN", "UDYAM", "MCA", "OEM_AUTHORIZATION"):
-        add_document(db, delta, cat, tender1.id, generic_doc_text(cat, delta.company_name), f"{cat.lower()}_certificate.txt")
-
-    # --- Everest Engineering: expired NSIC document (forced via seeded mock outcome) ---
-    link(everest, tender2, submitted_at=tender2.published_at + timedelta(days=6), quoted_price=9600000, turnover=22)
-    for cat in ("GST", "PAN", "INCOME_TAX", "EPFO", "ESIC"):
-        add_document(db, everest, cat, tender2.id, generic_doc_text(cat, everest.company_name), f"{cat.lower()}_certificate.txt")
-    nsic_id = find_identifier("NSICEV", "nsic", "EXPIRED")
-    nsic_doc = add_document(db, everest, "NSIC", tender2.id, generic_doc_text("NSIC", everest.company_name), "nsic_certificate.txt")
-
-    def everest_overrides(db, bidder, tender_id):
-        doc = db.query(Document).filter(Document.bidder_id == bidder.id, Document.category == "NSIC").first()
-        if doc and doc.extraction:
-            doc.extraction.registration_number = nsic_id
-            db.commit()
-
-    _overrides[everest.id] = everest_overrides
-    _skip_stabilize[everest.id] = ("NSIC",)
-    add_document(db, everest, "FINANCIAL", tender2.id, generic_doc_text("FINANCIAL", everest.company_name), "financials.txt")
-
-    # --- Fortune Pipeline: high local-content compliance ---
-    link(fortune, tender3, submitted_at=tender3.published_at + timedelta(days=10), quoted_price=5800000, local_content=82)
-    for cat in ("GST", "PAN", "MCA"):
-        add_document(db, fortune, cat, tender3.id, generic_doc_text(cat, fortune.company_name), f"{cat.lower()}_certificate.txt")
-
-    # --- Global Valve Corp: low local-content compliance (fails) ---
-    link(global_valve, tender3, submitted_at=tender3.published_at + timedelta(days=12), quoted_price=5650000, local_content=28)
-    for cat in ("GST", "PAN", "MCA"):
-        add_document(db, global_valve, cat, tender3.id, generic_doc_text(cat, global_valve.company_name), f"{cat.lower()}_certificate.txt")
-
-    # --- Horizon Instruments: forensic anomaly + document reuse with Alpha ---
-    link(horizon, tender1, submitted_at=tender1.published_at + timedelta(days=9), quoted_price=11700000, local_content=61)
-    for cat in ("GST", "PAN", "UDYAM", "MCA"):
-        add_document(db, horizon, cat, tender1.id, generic_doc_text(cat, horizon.company_name), f"{cat.lower()}_certificate.txt")
-    # Byte-identical OEM authorization letter to Alpha's -> real hash-collision forensic
-    # signal + maximal document-DNA similarity across two different bidders.
-    add_document(db, horizon, "OEM_AUTHORIZATION", tender1.id, OEM_LETTER_TEMPLATE.format(company=alpha.company_name, pan=alpha.pan_number).encode(), "oem_authorization_letter.txt")
-
-    # --- Indus & Jupiter: synchronized submission timing + Jupiter's combined issues ---
-    sync_time = tender2.published_at + timedelta(days=3, hours=2)
-    link(indus, tender2, submitted_at=sync_time, quoted_price=9500000, turnover=18)
-    for cat in ("GST", "PAN", "INCOME_TAX", "EPFO", "NSIC"):
-        add_document(db, indus, cat, tender2.id, generic_doc_text(cat, indus.company_name), f"{cat.lower()}_certificate.txt")
-    add_document(db, indus, "FINANCIAL", tender2.id, generic_doc_text("FINANCIAL", indus.company_name), "financials.txt")
-
-    link(jupiter, tender2, submitted_at=sync_time + timedelta(minutes=4), quoted_price=9505000, turnover=4)
-    for cat in ("GST", "PAN", "INCOME_TAX", "EPFO", "NSIC"):
-        add_document(db, jupiter, cat, tender2.id, generic_doc_text(cat, jupiter.company_name), f"{cat.lower()}_certificate.txt")
-    add_document(db, jupiter, "FINANCIAL", tender2.id, generic_doc_text("FINANCIAL", jupiter.company_name), "financials.txt")
-
-    print("Running verification pipeline for every bidder (this drives every engine)...")
-    all_pairs = [
-        (alpha, tender1), (bright, tender1), (bright, tender2), (chennai_fab, tender1),
-        (delta, tender1), (everest, tender2), (fortune, tender3), (global_valve, tender3),
-        (horizon, tender1), (indus, tender2), (jupiter, tender2),
-    ]
-    for bidder, tender in all_pairs:
-        run_full_pipeline(db, bidder, tender.id, officer)
-
-    print("Running cross-bidder document similarity scan on tender 1...")
-    compare_bidder_documents_across_tender(db, tender1.id, min_score=0.5)
-
-    # Re-run compliance + behavior after cross-bidder comparisons exist, so
-    # discrepancies / flags derived from them are reflected in final reports.
-    for bidder, tender in all_pairs:
-        run_cross_check(db, bidder.id, tender.id)
-        evaluate_compliance(db, bidder.id, tender.id)
-        analyze_behavior(db, bidder.id, tender.id)
-
-    print("Recording a couple of officer decisions...")
-    db.add(OfficerDecision(bidder_id=bright.id, tender_id=tender1.id, officer_id=officer.id, decision="QUALIFIED", reason="All mandatory requirements verified; no discrepancies found.", decided_at=NOW))
-    db.add(OfficerDecision(bidder_id=alpha.id, tender_id=tender1.id, officer_id=officer.id, decision="PENDING_REVIEW", reason="Local content shortfall and document integrity signal require clarification from bidder before a decision.", decided_at=NOW))
-    db.commit()
-
-    print("\nSeed complete.")
-    print("Demo credentials:")
-    print("  Admin:              admin@cpcl.gov.in / Admin@123")
-    print("  Procurement Officer: officer@cpcl.gov.in / Officer@123")
-    print("  Bidder portal:       bidder@example.com / Bidder@123")
-    print(f"\nShowcase bidder: {alpha.company_name} (id={alpha.id}) on tender {tender1.tender_number} (id={tender1.id})")
-
+    # One case waiting on the bidder.
+    wait = cases[("pump", "deccan")]
+    cs.start_review(db, wait, officer)
+    cs.request_clarification(db, wait, officer, "Your GSTIN 27AABCD5678P1ZQ does not pass the GSTIN check digit. "
+                             "Please upload the GST REG-06 certificate downloaded from the GST portal.", requested_category="GST")
     db.close()
+
+    print("\nDemo accounts (password in brackets):")
+    print("  Admin              admin@cpcl.gov.in      (Admin@123)")
+    print("  Procurement Officer officer@cpcl.gov.in    (Officer@123)")
+    print("  Auditor            auditor@cpcl.gov.in    (Auditor@123)")
+    print("  Bidder (clean)     alpha@alphaindia.in    (Bidder@123)")
+    print("  Bidder (flagged)   bharat@bharatflowtech.in (Bidder@123)")
+    print("  Other bidders      <key>@bidder.example.in (Bidder@123), key in coastal, deccan, eastern, eastline, kaveri")
 
 
 if __name__ == "__main__":
-    main()
+    seed()

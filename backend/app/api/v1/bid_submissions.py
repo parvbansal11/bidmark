@@ -11,6 +11,7 @@ This does not itself perform any verification — it simply records what the
 bidder declared. Verification happens against uploaded documents and the
 Mock Government Verification API Gateway, exactly as for any other evidence.
 """
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,6 +26,7 @@ from app.models.tender import Tender, TenderBidder
 from app.models.user import User, UserRole
 from app.schemas.bid import BidSubmissionCreate, BidSubmissionOut
 from app.services import bidder_portal_service as portal
+from app.services import case_service as cases
 from app.services import telemetry_service as telemetry
 from app.services.audit_service import log_action
 from app.services.notification_service import notify
@@ -32,6 +34,7 @@ from app.services.pdf_service import build_bid_receipt_pdf
 from app.utils.responses import success
 
 router = APIRouter(prefix="/api/v1/tenders", tags=["Bid Submissions"])
+logger = logging.getLogger(__name__)
 
 
 @router.post("/{tender_id}/bidders/{bidder_id}/bid-submission")
@@ -82,6 +85,14 @@ def create_or_update_bid_submission(
     if current_user.role == UserRole.BIDDER:
         telemetry.record(db, request, "BID_SUBMIT", user_id=current_user.id, bidder_id=bidder_id, tender_id=tender_id, commit=False)
     db.commit()
+    if current_user.role == UserRole.BIDDER:
+        case = cases.get_or_create(db, tender_id, bidder_id)
+        if case.stage == "DRAFT":
+            try:
+                cases.submit(db, case, current_user)
+            except Exception:  # the bid is saved either way; an officer can re-run screening
+                logger.exception("screening failed for case %s", case.id)
+                db.rollback()
     db.refresh(submission)
     log_action(
         db,

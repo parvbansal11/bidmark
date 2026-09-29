@@ -156,8 +156,9 @@ def extract_pdf(path: str, ocr: bool = True) -> Extracted:
             raw_chars = page.chars
             hidden, over = _occluded(raw_chars)
             hidden |= _under_cover_box(raw_chars, page.rects, hidden, over)
-            hidden_keys = {(raw_chars[i]["x0"], raw_chars[i]["top"], raw_chars[i]["text"]) for i in hidden}
-            visible = page.filter(lambda o: o.get("object_type") != "char" or (o["x0"], o["top"], o["text"]) not in hidden_keys) if hidden else page
+            # By identity: a retyped value often repeats the old glyphs at the same spot.
+            hidden_ids = {id(raw_chars[i]) for i in hidden}
+            visible = page.filter(lambda o: id(o) not in hidden_ids) if hidden else page
             page_words = visible.extract_words(extra_attrs=["fontname", "size"], keep_blank_chars=False, use_text_flow=False)
             for w in page_words:
                 words.append(Word(w["text"], pno, w["x0"], w["top"], w["x1"], w["bottom"], w.get("fontname"), w.get("size")))

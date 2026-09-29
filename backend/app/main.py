@@ -56,6 +56,9 @@ app = FastAPI(
         {"name": "Audit", "description": "Append-only audit trail"},
         {"name": "Verification Workflow", "description": "End-to-end automated verification orchestration"},
         {"name": "Bidder Portal", "description": "Self-scoped bidder-facing dashboard, documents, compliance, actions, submissions, notifications and profile"},
+        {"name": "Home", "description": "Role-specific landing data: tasks first, then the work queue"},
+        {"name": "Cases", "description": "Evaluation workflow: submit, screen, review, rule on findings, clarify, decide"},
+        {"name": "Evidence", "description": "Field positions, forensic signals, page images, tender intelligence, audit chain"},
     ],
 )
 
@@ -133,6 +136,9 @@ from app.api.v1.dashboard import router as dashboard_router  # noqa: E402
 from app.api.v1.workflow import router as workflow_router  # noqa: E402
 from app.api.v1.bidder_portal import router as bidder_portal_router  # noqa: E402
 from app.api.v1.bidmark import router as bidmark_router  # noqa: E402
+from app.api.v1.cases import clar_router, router as cases_router  # noqa: E402
+from app.api.v1.evidence import router as evidence_router  # noqa: E402
+from app.api.v1.home import router as home_router  # noqa: E402
 
 app.include_router(auth_router)
 app.include_router(users_router)
@@ -154,3 +160,7 @@ app.include_router(dashboard_router)
 app.include_router(workflow_router)
 app.include_router(bidder_portal_router)
 app.include_router(bidmark_router)
+app.include_router(home_router)
+app.include_router(cases_router)
+app.include_router(clar_router)
+app.include_router(evidence_router)

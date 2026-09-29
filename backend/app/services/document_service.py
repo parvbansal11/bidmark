@@ -118,8 +118,8 @@ def verify_document(db: Session, document: Document) -> VerificationResult:
         reasons.append(f"Document validity date {extraction.validity_date} has passed.")
     else:
         registry = CATEGORY_TO_REGISTRY.get(category)
-        if registry:
-            identifier = extraction.registration_number or extraction.gstin or extraction.pan or extraction.cin or ""
+        identifier = extraction.registration_number or extraction.gstin or extraction.pan or extraction.cin or ""
+        if registry and identifier:
             govt_result = GovernmentVerificationProvider.verify(
                 registry, identifier, {"company_name": extraction.company_name}
             )
@@ -136,7 +136,11 @@ def verify_document(db: Session, document: Document) -> VerificationResult:
             else:
                 status = "VERIFIED"
 
-        if status == "VERIFIED" and bidder and not _name_similarity_ok(extraction.company_name, bidder.company_name):
+        registered_name = (govt_result or {}).get("data", {}).get("legal_name") if (govt_result or {}).get("data", {}).get("lookup") == "SANDBOX_REGISTRY" else None
+        if status == "VERIFIED" and registered_name and not _name_similarity_ok(extraction.company_name, registered_name):
+            status = "REQUIRES_REVIEW"
+            reasons.append(f"The registry holds this number for '{registered_name}', but the document names '{extraction.company_name}'.")
+        if status == "VERIFIED" and bidder and not _name_similarity_ok(extraction.company_name, bidder.legal_name or bidder.company_name):
             status = "REQUIRES_REVIEW"
             reasons.append(
                 f"Extracted company name '{extraction.company_name}' does not closely match bidder profile name '{bidder.company_name}'."
