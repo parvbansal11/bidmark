@@ -26,7 +26,7 @@ class BidderCreate(BaseModel):
 
 
 class BidderUpdate(BaseModel):
-    """Full update schema — usable by Procurement Officer / Admin only."""
+    """Full update schema, usable by Procurement Officer / Admin only."""
 
     company_name: Optional[str] = None
     legal_name: Optional[str] = None
@@ -45,7 +45,7 @@ class BidderUpdate(BaseModel):
 
 # Fields a Bidder-role user may edit on their own profile directly. Official
 # identifiers (company_name, legal_name, pan_number, gstin, cin, udyam_number)
-# are intentionally excluded — those go through the "Request Correction" flow.
+# are intentionally excluded, those go through the "Request Correction" flow.
 BIDDER_SELF_EDITABLE_FIELDS = {"contact_email", "contact_phone", "website", "registered_address"}
 
 
@@ -63,7 +63,7 @@ class BidderCorrectionRequest(BaseModel):
     reason: Optional[str] = None
 
 
-# Bidder moderation — actions a Procurement Officer or Admin can take against
+# Bidder moderation, actions a Procurement Officer or Admin can take against
 # a bidder they find suspicious, fraudulent, or in violation of procurement
 # rules. FLAGGED is a non-blocking marker (visible to Officers/Admin only);
 # SUSPENDED and BANNED both immediately revoke the bidder's ability to use

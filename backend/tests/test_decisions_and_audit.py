@@ -24,7 +24,7 @@ def test_officer_can_submit_and_retrieve_decision(client, officer_headers, sampl
 
 def test_decision_rejects_disallowed_verdicts(client, officer_headers, sample_bidder, sample_tender):
     """The platform must never allow an AI-adjacent verdict like FRAUD or
-    GUILTY to be recorded as an officer decision — only the three sanctioned
+    GUILTY to be recorded as an officer decision, only the three sanctioned
     outcomes are valid per the schema's Literal type."""
     r = client.post(
         f"/api/v1/decisions/{sample_bidder['id']}/{sample_tender['id']}",

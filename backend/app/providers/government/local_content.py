@@ -6,7 +6,7 @@ from app.providers.government.base import BaseGovernmentProvider, _seeded_random
 class LocalContentProvider(BaseGovernmentProvider):
     """
     Make in India / local content self-certification check. This does not
-    depend on an external registry — it validates the bidder's declared
+    depend on an external registry, it validates the bidder's declared
     local-content percentage against the tender's threshold, and is exposed
     through the gateway for a consistent interface with the other checks.
     """

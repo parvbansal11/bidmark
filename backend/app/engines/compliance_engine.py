@@ -1,5 +1,5 @@
 """
-Compliance engine — maps each tender requirement to the bidder's evidence and
+Compliance engine, maps each tender requirement to the bidder's evidence and
 produces a transparent, explainable ComplianceReport. Never returns a
 mysterious score: every point is traceable to a requirement-level evaluation.
 
@@ -201,7 +201,7 @@ def evaluate_compliance(db: Session, bidder_id: str, tender_id: str) -> Complian
             achieved_weight += max(0.0, score_contribution)
 
         if status == "FAILED" and req.is_mandatory:
-            critical_issues.append(f"Mandatory requirement failed: {req.requirement_type} — {explanation}")
+            critical_issues.append(f"Mandatory requirement failed: {req.requirement_type}, {explanation}")
 
         db.add(
             RequirementEvaluation(

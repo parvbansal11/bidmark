@@ -1,33 +1,23 @@
 services:
   - type: web
-    name: gem-compliance-backend
+    name: bidmark-api
     runtime: docker
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     plan: free
+    healthCheckPath: /health
     envVars:
-      - key: DATABASE_URL
-        value: sqlite:////app/data/gem_compliance.db
       - key: JWT_SECRET
         generateValue: true
-      - key: JWT_ALGORITHM
-        value: HS256
-      - key: ACCESS_TOKEN_EXPIRE_MINUTES
-        value: "480"
-      - key: UPLOAD_DIRECTORY
-        value: /app/uploads
-      - key: MAX_UPLOAD_SIZE_MB
-        value: "15"
+      - key: ENVIRONMENT
+        value: production
+      - key: APP_NAME
+        value: Bidmark
       - key: MOCK_GOVERNMENT_API
         value: "true"
       - key: AI_PROVIDER
         value: mock
       - key: CORS_ORIGINS
-        value: "https://YOUR-NETLIFY-SITE.netlify.app"
-      - key: ENVIRONMENT
-        value: production
-      - key: APP_NAME
-        value: "GeM Bid Compliance Verification Platform"
-    # Render's free plan has no persistent disk, so the SQLite file resets on every
-    # restart/redeploy — re-run the seed command below after each one. Add a paid
-    # plan's persistent disk (mountPath /app/data) if you need the data to survive.
+        value: "https://bidmark.vercel.app,http://localhost:5173"
+    # The free plan has no persistent disk. start.sh reseeds on every boot, so the
+    # demo always opens on the same data; attach a disk at /app/data to keep changes.

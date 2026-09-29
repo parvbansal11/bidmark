@@ -1,5 +1,5 @@
 """
-Complete Automated Verification Workflow — chains every engine in the
+Complete Automated Verification Workflow, chains every engine in the
 platform into one call, exactly as specified in section 33 of the PS brief:
 
   Load bidder -> Load tender -> Load requirements -> Load documents

@@ -1,5 +1,5 @@
 """
-Mock Government Verification API Gateway — base provider interface.
+Mock Government Verification API Gateway, base provider interface.
 
 IMPORTANT (prototype rule): this module does NOT access any real government
 database or private GeM API. Every provider below is a deterministic,
@@ -18,7 +18,7 @@ from __future__ import annotations
 import hashlib
 import random
 from abc import ABC, abstractmethod
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from app.utils.ids import new_ref

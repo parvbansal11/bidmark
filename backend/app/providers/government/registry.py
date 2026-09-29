@@ -1,5 +1,5 @@
 """
-GovernmentVerificationProvider — the single dispatcher the rest of the
+GovernmentVerificationProvider, the single dispatcher the rest of the
 application talks to. It hides the fact that there are 13 separate mock
 registries behind one lookup, and is the seam where real integrations would
 be plugged in later.

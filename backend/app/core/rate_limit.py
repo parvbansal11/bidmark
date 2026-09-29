@@ -6,7 +6,7 @@ Intentionally simple: a fixed-window failure counter keyed by
 credential-stuffing / password-guessing scripts against a single-instance
 deployment (which is what this platform runs as). A multi-instance
 production deployment would swap this for a shared store (e.g. Redis)
-behind the same `check` / `record_failure` / `clear` interface — nothing
+behind the same `check` / `record_failure` / `clear` interface, nothing
 above this module would need to change.
 """
 from __future__ import annotations

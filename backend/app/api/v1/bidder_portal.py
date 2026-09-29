@@ -1,12 +1,12 @@
 """
-Bidder Portal API — the single, self-scoped surface a BIDDER-role account
+Bidder Portal API, the single, self-scoped surface a BIDDER-role account
 uses. Every endpoint here resolves the bidder implicitly from the
 authenticated user's own linked Bidder profile; none of them accept a
 bidder_id path parameter, which removes any possibility of one bidder
 requesting another bidder's data by guessing/enumerating an id.
 
 Everything returned here has already passed through the translation layer in
-app/services/bidder_portal_service.py — no raw engine/AI/forensic language,
+app/services/bidder_portal_service.py, no raw engine/AI/forensic language,
 no cross-bidder references, no confidential procurement intelligence.
 """
 from fastapi import APIRouter, Depends, HTTPException

@@ -1,5 +1,5 @@
 """
-BIDMARK Verification API — three-module verification architecture.
+BIDMARK Verification API, three-module verification architecture.
 
 POST /api/v1/bidmark/analyse/{bidder_id}/{tender_id}
   Runs (or re-runs) the full BIDMARK analysis.  Procurement Officer / Admin only.
@@ -58,7 +58,7 @@ _FUSION_TO_MESSAGE = {
         "The Procurement Officer will review your submission and notify you of the outcome."
     ),
     "RECOMMEND_REVIEW": (
-        "Your submission is under review. Some items need attention — please check the "
+        "Your submission is under review. Some items need attention, please check the "
         "action items below and upload any missing or corrected documents."
     ),
     "RECOMMEND_REJECTION": (
@@ -73,8 +73,8 @@ def _to_bidder_summary(analysis: BidmarkAnalysis) -> BidmarkSummaryOut:
     action_items: list[dict] = []
     for flag in (analysis.explainable_flags or []):
         if flag.get("severity") in ("HIGH", "MEDIUM"):
-            # Translate to friendly language — no internal module names
-            friendly_title = flag["flag"].replace("Cross-Module Inconsistency — ", "").replace("Cross-Module Contradiction: ", "")
+            # Translate to friendly language, no internal module names
+            friendly_title = flag["flag"].replace("Cross-Module Inconsistency, ", "").replace("Cross-Module Contradiction: ", "")
             action_items.append({
                 "title": friendly_title,
                 "description": flag.get("what_to_review", "Please review and correct this item."),
@@ -120,7 +120,7 @@ def analyse(
         bidder_id=bidder_id,
         tender_id=tender_id,
         description=(
-            f"BIDMARK analysis run — Entity: {result.entity_verdict}, "
+            f"BIDMARK analysis run, Entity: {result.entity_verdict}, "
             f"Compliance: {result.compliance_verdict}, "
             f"Document: {result.document_verdict}, "
             f"Fusion: {result.fusion_verdict}"

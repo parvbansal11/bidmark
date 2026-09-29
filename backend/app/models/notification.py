@@ -6,7 +6,7 @@ from app.models.base import TimestampMixin, UUIDMixin
 
 
 class Notification(Base, UUIDMixin, TimestampMixin):
-    """Bidder-facing notification. Always plain, non-technical language — never
+    """Bidder-facing notification. Always plain, non-technical language, never
     raw engine/AI/forensic terminology and never a reference to another bidder.
 
     Two kinds populate this table:

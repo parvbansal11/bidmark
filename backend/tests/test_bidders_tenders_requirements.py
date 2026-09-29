@@ -46,7 +46,7 @@ def test_create_tender_with_duplicate_reference_returns_409_not_500(client, admi
 
 
 def test_add_requirement_to_existing_tender(client, officer_headers, admin_headers, sample_tender):
-    # Adding requirements is part of tender configuration — Admin-only, same
+    # Adding requirements is part of tender configuration, Admin-only, same
     # as creating the tender itself.
     r = client.post(
         f"/api/v1/tenders/{sample_tender['id']}/requirements",

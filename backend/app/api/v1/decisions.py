@@ -26,7 +26,7 @@ def submit_decision(bidder_id: str, tender_id: str, payload: DecisionCreate, db:
     db.refresh(decision)
     log_action(
         db, action="FINAL_DECISION", actor=current_user, entity_type="OfficerDecision", entity_id=decision.id,
-        bidder_id=bidder_id, tender_id=tender_id, description=f"Officer decision: {payload.decision} — {payload.reason}",
+        bidder_id=bidder_id, tender_id=tender_id, description=f"Officer decision: {payload.decision}, {payload.reason}",
     )
     status_message = {
         "QUALIFIED": "Your bid has been marked as qualified for this tender.",

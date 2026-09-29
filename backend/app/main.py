@@ -1,7 +1,7 @@
 """
-GeM Bid Compliance Verification Platform — FastAPI application entrypoint.
+GeM Bid Compliance Verification Platform, FastAPI application entrypoint.
 
-PS 26100 — AI-Powered Integrated Bid Compliance Verification Platform for GeM
+PS 26100, AI-Powered Integrated Bid Compliance Verification Platform for GeM
 Procurement. Ministry of Petroleum & Natural Gas / Chennai Petroleum
 Corporation Limited (CPCL).
 
@@ -17,7 +17,6 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.core.config import settings
@@ -32,7 +31,7 @@ app = FastAPI(
     description=(
         "AI-powered decision-support platform for verifying bidder compliance, "
         "document integrity and behavioral risk during GeM procurement. AI never "
-        "issues a final qualification decision — that remains with the "
+        "issues a final qualification decision, that remains with the "
         "Procurement Officer."
     ),
     version="1.0.0",

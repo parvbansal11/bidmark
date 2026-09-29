@@ -46,7 +46,7 @@ def client():
 def register(client, email, role, password="Password123"):
     """Registers via the PUBLIC endpoint. NOTE: as of the RBAC hardening,
     POST /api/v1/auth/register always creates a BIDDER account regardless of
-    what `role` is passed here — any `role` in the payload is a no-op extra
+    what `role` is passed here, any `role` in the payload is a no-op extra
     field. This helper is only meaningful (and only used) for role="BIDDER"
     call sites; see `_bootstrap_admin`/`officer_headers` below for how
     Officer/Admin test accounts are created instead."""
@@ -66,7 +66,7 @@ def _login(client, email, password="Password123"):
 def _bootstrap_admin(email="admin@test.gov.in", password="Password123"):
     """Create the very first Admin account directly against the DB, bypassing
     the API entirely. This mirrors how app/seed.py provisions the first real
-    Admin account in local/demo environments — since Admin/Officer accounts
+    Admin account in local/demo environments, since Admin/Officer accounts
     can only otherwise be created BY an existing Admin (POST /api/v1/users),
     something has to plant the first one without going through that gate."""
     from app.core.security import hash_password
@@ -91,7 +91,7 @@ def admin_headers(client):
 
 @pytest.fixture
 def officer_headers(client, admin_headers):
-    """Officer accounts are provisioned by an Admin via POST /api/v1/users —
+    """Officer accounts are provisioned by an Admin via POST /api/v1/users -
     exactly the flow a real Admin would use, not a backdoor."""
     r = client.post(
         "/api/v1/users",
@@ -126,7 +126,7 @@ def sample_bidder(client, admin_headers):
 @pytest.fixture
 def sample_tender(client, admin_headers):
     # Tender creation is Admin-only (Procurement Officer's role is reviewing/
-    # verifying/evaluating, not creating/publishing tenders) — see
+    # verifying/evaluating, not creating/publishing tenders), see
     # app/api/v1/tenders.py::create_tender.
     r = client.post(
         "/api/v1/tenders",
@@ -150,7 +150,7 @@ def sample_tender(client, admin_headers):
 
 @pytest.fixture
 def limited_tender(client, admin_headers):
-    """A LIMITED_TENDER — unlike sample_tender (OPEN_TENDER), this is NOT
+    """A LIMITED_TENDER, unlike sample_tender (OPEN_TENDER), this is NOT
     auto-discoverable by every bidder; a bidder only sees/can act on it once
     explicitly linked via add_bidder_to_tender."""
     r = client.post(

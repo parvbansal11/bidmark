@@ -21,7 +21,7 @@ PRIVILEGED_ROLES = {UserRole.ADMIN, UserRole.PROCUREMENT_OFFICER, UserRole.AUDIT
 @router.get("/config")
 def auth_config():
     """Public, non-sensitive auth configuration the frontend needs to render
-    registration validation without hardcoding it — currently just the email
+    registration validation without hardcoding it, currently just the email
     domain required for a self-registered Admin/Procurement Officer account.
     Centralizing it here means the demo rule can be changed (or removed) via
     one setting, on both backend and frontend, without touching auth logic."""
@@ -36,12 +36,12 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     An ADMIN or PROCUREMENT_OFFICER account can ALSO be self-registered
     through this exact same endpoint, but only when the email address ends
     with settings.PRIVILEGED_ROLE_EMAIL_DOMAIN (e.g. "...@cpcl.gov.in"). This
-    is a plain string check — it does not verify mailbox ownership, send a
+    is a plain string check, it does not verify mailbox ownership, send a
     verification email, require an OTP, or check DNS/MX records. It exists
     purely so a hackathon demo can create realistic-looking Admin/Officer
     accounts without a separate provisioning step. An existing Admin can
     still provision Admin/Officer accounts with no domain restriction via
-    POST /api/v1/users (see app/api/v1/users.py) — that channel is unchanged.
+    POST /api/v1/users (see app/api/v1/users.py), that channel is unchanged.
     """
     if payload.role in PRIVILEGED_ROLES:
         domain = settings.PRIVILEGED_ROLE_EMAIL_DOMAIN.lower().lstrip("@")
@@ -81,7 +81,7 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
 @router.post("/login")
 def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     # Basic brute-force protection: lock out an email+IP pair for a cooldown
-    # window after too many failed attempts. In-memory and per-process — fine
+    # window after too many failed attempts. In-memory and per-process, fine
     # for this deployment's single-instance footprint; a multi-instance
     # production deployment would back this with Redis instead.
     client_ip = request.client.host if request.client else "unknown"

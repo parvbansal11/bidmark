@@ -1,5 +1,5 @@
 """
-Similarity Engine — TF-IDF / cosine similarity over normalized document text,
+Similarity Engine, TF-IDF / cosine similarity over normalized document text,
 blended with a lightweight structural similarity signal. Used by the Document
 DNA / Fingerprinting module (USP 2) to compare evidence across bidders.
 """

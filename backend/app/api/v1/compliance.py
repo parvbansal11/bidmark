@@ -48,7 +48,7 @@ def get_report(bidder_id: str, tender_id: str, db: Session = Depends(get_db), cu
 
 @router.get("/report/{bidder_id}/{tender_id}/pdf")
 def download_compliance_report_pdf(bidder_id: str, tender_id: str, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Downloadable PDF version of the compliance report — same data as the
+    """Downloadable PDF version of the compliance report, same data as the
     JSON report above, same RBAC boundary (a Bidder can only ever pull their
     own; Officers/Admin can pull any)."""
     enforce_bidder_scope(current_user, bidder_id, db)

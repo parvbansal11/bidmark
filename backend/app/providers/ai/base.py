@@ -1,6 +1,6 @@
 """
 AIProvider
-  ├── MockAIProvider   (deterministic, rule-based — default, no external calls)
+  ├── MockAIProvider   (deterministic, rule-based, default, no external calls)
   └── LLMProvider      (optional; reads LLM_API_KEY; not wired by default)
 
 AI in this platform never invents a verification result and never issues a

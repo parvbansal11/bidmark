@@ -5,7 +5,7 @@ from typing import Any, Optional
 class DocumentExtractionProvider(ABC):
     """
     DocumentExtractionProvider
-      ├── MockDocumentProvider   (deterministic synthetic extraction — default)
+      ├── MockDocumentProvider   (deterministic synthetic extraction, default)
       └── ForensicExtractionProvider (real text, positions and forensics when the
                                   uploaded file actually contains readable
                                   text, e.g. a text-layer PDF)

@@ -2,7 +2,7 @@
 Admin-only user management.
 
 This is the ONLY channel through which a Procurement Officer or Admin
-account is created — public self-registration (app/api/v1/auth.py::register)
+account is created, public self-registration (app/api/v1/auth.py::register)
 can only ever produce a BIDDER account. Keeping the two flows in separate
 files/routers makes the RBAC boundary easy to audit: "who can mint a
 privileged account" has exactly one answer, this router, gated by

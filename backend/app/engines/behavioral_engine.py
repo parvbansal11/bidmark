@@ -1,6 +1,6 @@
 """
 Behavioral Risk Intelligence engine (USP 3). Looks for company-level and
-cross-bidder *patterns* that deserve human review — never proof of
+cross-bidder *patterns* that deserve human review, never proof of
 wrongdoing. Every flag is confidence-scored and marked
 requires_human_review=True; nothing here calls a bidder fraudulent,
 collusive, or guilty.

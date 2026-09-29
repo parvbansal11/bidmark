@@ -1,5 +1,5 @@
 """
-BIDMARK Verification Architecture — persistent result model.
+BIDMARK Verification Architecture, persistent result model.
 
 Stores the three-module verdicts, fusion result, detected inconsistencies,
 and explainable AI flags produced by the bidmark_engine for one
@@ -27,7 +27,7 @@ class BidmarkAnalysis(Base, UUIDMixin, TimestampMixin):
 
     Verdict values: VERIFIED | FLAGGED | NEEDS_REVIEW
     Fusion verdict: RECOMMEND_APPROVAL | RECOMMEND_REVIEW | RECOMMEND_REJECTION
-    (These are AI recommendations only — the Procurement Officer makes the
+    (These are AI recommendations only, the Procurement Officer makes the
     actual APPROVE / REQUEST_CLARIFICATION / REJECT decision.)
     """
 

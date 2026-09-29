@@ -1,7 +1,7 @@
 """
 Object-level RBAC tests: a BIDDER-role account must never be able to reach
 another bidder's data, PO-only intelligence (forensics/behavior/cross-bidder/
-audit/dashboard), or bidder-management actions — even by calling the API
+audit/dashboard), or bidder-management actions, even by calling the API
 directly with a valid token. These lock in the fixes made when the platform's
 role-based access control was audited and hardened.
 """
@@ -178,7 +178,7 @@ def test_officer_can_suspend_bidder_and_block_login_immediately(client, officer_
     assert r.status_code == 200
     assert r.json()["data"]["status"] == "SUSPENDED"
 
-    # The account is deactivated immediately — not just on next login. The
+    # The account is deactivated immediately, not just on next login. The
     # bidder's existing token should now be rejected on any authenticated call.
     r = client.get("/api/v1/portal/dashboard", headers=reg_headers)
     assert r.status_code == 401
@@ -215,7 +215,7 @@ def test_officer_can_permanently_ban_bidder(client, officer_headers, admin_heade
 def test_open_tender_is_auto_discoverable_by_any_bidder(client, sample_tender, bidder_user_headers):
     """sample_tender is an OPEN_TENDER. A bidder who was never explicitly
     added to it should still see it in My Tenders and be able to view its
-    compliance detail — this is the fix for 'admin creates a tender and it
+    compliance detail, this is the fix for 'admin creates a tender and it
     never shows up for the bidder'."""
     r = client.get("/api/v1/portal/tenders", headers=bidder_user_headers)
     assert r.status_code == 200

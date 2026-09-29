@@ -7,7 +7,7 @@ local content percentage, declared turnover, and submission timestamp. These
 values feed the compliance engine (LOCAL_CONTENT / TURNOVER requirement
 evaluation) and the behavioral engine (submission-timing analysis).
 
-This does not itself perform any verification — it simply records what the
+This does not itself perform any verification, it simply records what the
 bidder declared. Verification happens against uploaded documents and the
 Mock Government Verification API Gateway, exactly as for any other evidence.
 """

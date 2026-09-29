@@ -4,7 +4,7 @@ from tests.conftest import TestingSessionLocal, upload_doc
 def test_cross_check_detects_major_name_mismatch(client, officer_headers, admin_headers, sample_bidder, sample_tender):
     """Forces a document extraction to carry a wildly different company name
     than the bidder's profile, then confirms the cross-check engine flags a
-    MAJOR_MISMATCH discrepancy — deterministic because we set the extracted
+    MAJOR_MISMATCH discrepancy, deterministic because we set the extracted
     value directly rather than relying on the mock provider's random variant."""
     client.post(f"/api/v1/tenders/{sample_tender['id']}/bidders/{sample_bidder['id']}", headers=admin_headers)
     doc = upload_doc(client, officer_headers, sample_bidder["id"], "GST", sample_tender["id"])

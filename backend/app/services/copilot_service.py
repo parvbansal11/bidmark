@@ -1,11 +1,12 @@
 """
 Procurement Officer Copilot (USP 8). Every answer is grounded strictly in
-evidence already computed and stored by the platform — the copilot never
+evidence already computed and stored by the platform, the copilot never
 calls a government registry itself and never invents a fact.
 """
 from sqlalchemy.orm import Session
 
 from app.models.audit import AuditLog
+from app.models.case import BidCase
 from app.models.behavior import BehavioralFlag
 from app.models.compliance import ComplianceReport, RequirementEvaluation
 from app.models.document import Document
@@ -79,6 +80,19 @@ def gather_evidence(db: Session, bidder_id: str, tender_id: str, compare_bidder_
         "recent_audit_events": recent_audit_events,
         "ai_recommendation": ai_recommendation,
         "comparison": comparison,
+        "case": _case_evidence(db, bidder_id, tender_id),
+    }
+
+
+def _case_evidence(db: Session, bidder_id: str, tender_id: str) -> dict:
+    case = db.query(BidCase).filter(BidCase.bidder_id == bidder_id, BidCase.tender_id == tender_id).first()
+    if not case:
+        return {}
+    return {
+        "stage": case.stage, "lane": case.lane, "recommendation": case.ai_recommendation,
+        "rationale": (case.summary or {}).get("recommendation_rationale"),
+        "findings": [{k: f.get(k) for k in ("id", "code", "severity", "source", "title", "detail", "category", "page")}
+                     for f in (case.findings or []) if f.get("severity") != "INFO"],
     }
 
 

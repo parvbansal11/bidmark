@@ -1,5 +1,5 @@
 """
-MockAIProvider — fully deterministic, rule-based reasoning. No external API
+MockAIProvider, fully deterministic, rule-based reasoning. No external API
 calls, no invented facts: every sentence it produces is templated from data
 that already exists in the database (compliance report, discrepancies,
 forensic/behavioral signals). This is the default and, per this build,
@@ -49,7 +49,7 @@ class MockAIProvider(AIProvider):
         if not reasons[1:]:
             reasons.append("No mandatory requirement failures, unresolved reviews, or elevated risk signals were found.")
 
-        # Decision logic — conservative by design; ties default to REQUIRES_REVIEW.
+        # Decision logic, conservative by design; ties default to REQUIRES_REVIEW.
         if failed and risk_level == "HIGH":
             recommendation = "NON_COMPLIANT"
             confidence = round(min(0.95, 0.6 + 0.35 * (len(failed) / max(1, len(failed) + 1))), 2)
@@ -101,11 +101,43 @@ class MockAIProvider(AIProvider):
 
     def answer_copilot_question(self, question: str, evidence: dict[str, Any]) -> dict[str, Any]:
         """Very small templated intent matcher over already-computed evidence.
-        Never invents facts — every answer cites data already in `evidence`."""
+        Never invents facts, every answer cites data already in `evidence`."""
         q = question.lower()
 
         def cite(items):
             return items if items else ["No supporting evidence found in the current record."]
+
+        case = evidence.get("case") or {}
+        findings = case.get("findings") or []
+
+        def about(codes=None, sources=None, words=None):
+            hits = [f for f in findings if (codes and f["code"] in codes) or (sources and f["source"] in sources)
+                    or (words and any(w in f["code"].lower() for w in words))]
+            if not hits:
+                return None
+            return {"answer": " ".join(f"{f['detail']} [{f['id']}]" for f in hits[:5]), "evidence": [f["id"] for f in hits[:5]]}
+
+        if findings:
+            if any(w in q for w in ("tamper", "edit", "alter", "forg", "retyp", "modified", "fake")):
+                got = about(codes={"OVERLAPPING_TEXT", "FIELD_FONT_OUTLIER", "MODIFIED_AFTER_SIGNING", "SIGNATURE_BROKEN",
+                                   "EDITOR_TOOL", "TIMESTAMP_INVERSION", "INCREMENTAL_UPDATES", "COMPRESSION_HOTSPOT"})
+                return got or {"answer": "No document shows signs of editing.", "evidence": cite([])}
+            if any(w in q for w in ("link", "cartel", "ring", "collu", "related", "connected", "cover")):
+                got = about(sources={"CARTEL"})
+                return got or {"answer": "No links to other bidders were found on this tender.", "evidence": cite([])}
+            if any(w in q for w in ("expir", "valid", "lapsed")):
+                got = about(words=("expir",))
+                return got or {"answer": "No required document had expired at the bid date.", "evidence": cite([])}
+            if any(w in q for w in ("ask", "clarif", "question for")):
+                high = [f for f in findings if f["severity"] == "HIGH" and f["source"] in ("CROSS_CHECK", "REQUIREMENT")]
+                if high:
+                    qs = [f"Please explain or correct: {f['detail']} [{f['id']}]" for f in high[:3]]
+                    return {"answer": " ".join(qs), "evidence": [f["id"] for f in high[:3]]}
+            if any(w in q for w in ("why", "summar", "flag", "recommend", "overview")):
+                top = [f for f in findings if f["severity"] == "HIGH"][:4]
+                parts = [f"Recommendation: {case.get('recommendation')}. {case.get('rationale') or ''}".strip()]
+                parts += [f"{f['title']}: {f['detail']} [{f['id']}]" for f in top]
+                return {"answer": " ".join(parts), "evidence": [f["id"] for f in top] or cite([])}
 
         if "why" in q and "high risk" in q or "why is" in q and "risk" in q:
             report = evidence.get("compliance_report", {})

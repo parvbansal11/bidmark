@@ -8,7 +8,7 @@ from app.models.user import UserRole
 
 class AdminUserCreate(BaseModel):
     """Admin-only user provisioning. This is the ONLY way a
-    PROCUREMENT_OFFICER or ADMIN account is ever created — public
+    PROCUREMENT_OFFICER or ADMIN account is ever created, public
     self-registration (POST /api/v1/auth/register) can only ever produce a
     BIDDER account. See app/api/v1/users.py."""
 

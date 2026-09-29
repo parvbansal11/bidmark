@@ -20,3 +20,5 @@ backend/.venv/
 backend/trust-roots/
 backend/demo-ca/
 backend/data/sandbox_registry.json
+.claude/
+backend/bidmark.db

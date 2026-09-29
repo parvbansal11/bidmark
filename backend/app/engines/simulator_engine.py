@@ -2,7 +2,7 @@
 What-If Compliance Simulator (USP 6). Lets a Procurement Officer temporarily
 change tender rules (e.g. raise the local-content threshold) and see the
 resulting impact on every bidder's compliance score, risk level, and ranking
-— without ever writing to the actual tender/requirement rows. Pure read +
+- without ever writing to the actual tender/requirement rows. Pure read +
 in-memory recompute.
 """
 from __future__ import annotations

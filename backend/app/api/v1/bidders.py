@@ -46,7 +46,7 @@ def _moderate(db: Session, bidder_id: str, new_status: str, action: str, current
     _sync_user_access(db, bidder)
     log_action(
         db, action=action, actor=current_user, entity_type="Bidder", entity_id=bidder.id, bidder_id=bidder.id,
-        description=f"Bidder {bidder.company_name} marked {new_status}" + (f" — reason: {reason}" if reason else ""),
+        description=f"Bidder {bidder.company_name} marked {new_status}" + (f", reason: {reason}" if reason else ""),
     )
     return bidder
 
@@ -106,7 +106,7 @@ def update_bidder(bidder_id: str, payload: BidderUpdate, db: Session = Depends(g
 
     updates = payload.model_dump(exclude_unset=True)
     if current_user.role == UserRole.BIDDER:
-        # Bidders cannot self-edit official identifiers or status — validate
+        # Bidders cannot self-edit official identifiers or status, validate
         # against the restricted self-service schema instead.
         restricted = BidderSelfUpdate(**{k: v for k, v in updates.items() if k in BidderSelfUpdate.model_fields})
         disallowed = set(updates.keys()) - set(BidderSelfUpdate.model_fields.keys())
@@ -129,7 +129,7 @@ def update_bidder(bidder_id: str, payload: BidderUpdate, db: Session = Depends(g
 
 @router.post("/{bidder_id}/flag")
 def flag_bidder(bidder_id: str, payload: BidderModerationAction, db: Session = Depends(get_db), current_user: User = Depends(require_officer)):
-    """Mark a bidder for closer attention. Non-blocking — the bidder can
+    """Mark a bidder for closer attention. Non-blocking, the bidder can
     still log in and use the system; this is purely a visible marker for
     other Officers/Admins reviewing this bidder."""
     bidder = _moderate(db, bidder_id, "FLAGGED", "BIDDER_FLAGGED", current_user, payload.reason)
@@ -157,7 +157,7 @@ def ban_bidder(bidder_id: str, payload: BidderModerationAction, db: Session = De
 def reactivate_bidder(bidder_id: str, payload: BidderModerationAction, db: Session = Depends(get_db), current_user: User = Depends(require_officer)):
     """Lift a flag/suspension/ban and restore normal access. Kept available
     (rather than making bans a dead end) so a mistaken action can be
-    corrected without losing the bidder's history — the reversal itself is
+    corrected without losing the bidder's history, the reversal itself is
     also audit-logged."""
     bidder = _moderate(db, bidder_id, "ACTIVE", "BIDDER_REACTIVATED", current_user, payload.reason)
     return success(BidderOut.model_validate(bidder).model_dump(), "Bidder reactivated")
@@ -171,7 +171,7 @@ def request_correction(
     current_user: User = Depends(get_current_user),
 ):
     """A Bidder requests a change to a sensitive/official identifier field.
-    This never edits the record directly — it is logged for a Procurement
+    This never edits the record directly, it is logged for a Procurement
     Officer / Admin to review and action manually."""
     enforce_bidder_scope(current_user, bidder_id, db)
     bidder = db.query(Bidder).filter(Bidder.id == bidder_id).first()

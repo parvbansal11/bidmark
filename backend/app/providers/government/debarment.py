@@ -10,7 +10,7 @@ class DebarmentProvider(BaseGovernmentProvider):
 
     def verify(self, identifier: str, context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         rng = _seeded_random(identifier, "debarment")
-        # Debarment should be rare in a demo dataset — skew heavily toward "clear".
+        # Debarment should be rare in a demo dataset, skew heavily toward "clear".
         is_debarred = rng.random() < 0.06
         data = {
             "entity_identifier": identifier,
@@ -20,7 +20,7 @@ class DebarmentProvider(BaseGovernmentProvider):
         }
         if is_debarred:
             data["message"] = (
-                "An active debarment/blacklisting record was found. This is a mock registry result — "
+                "An active debarment/blacklisting record was found. This is a mock registry result, "
                 "manual verification against the official debarment list is required before any action."
             )
             status = "REQUIRES_REVIEW"

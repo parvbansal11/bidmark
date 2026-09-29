@@ -1,5 +1,5 @@
 """
-Admin-only user management (app/api/v1/users.py) — the only channel through
+Admin-only user management (app/api/v1/users.py), the only channel through
 which Procurement Officer / Admin accounts get created, and the mechanism
 behind an Admin deactivating an Officer/Bidder account directly (as opposed
 to the bidder-specific flag/suspend/ban actions in bidders.py).

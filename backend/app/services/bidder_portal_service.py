@@ -1,5 +1,5 @@
 """
-Bidder Portal service — the translation layer between internal engine output
+Bidder Portal service, the translation layer between internal engine output
 (compliance evaluations, discrepancies, verification results, officer
 decisions) and the bidder-facing portal.
 
@@ -91,7 +91,7 @@ def _participating_tenders(db: Session, bidder_id: str) -> list[Tender]:
 
     Discovery model (mirrors how GeM open tendering actually works):
       - OPEN_TENDER tenders that have been published (status != DRAFT) are
-        visible to every bidder automatically — no invitation needed.
+        visible to every bidder automatically, no invitation needed.
       - LIMITED_TENDER / SINGLE_TENDER tenders are only visible to a bidder
         once an Officer/Admin has explicitly linked them (via
         POST /api/v1/tenders/{id}/bidders/{bidder_id}), or once the bidder
@@ -310,7 +310,7 @@ def compliance_detail_for_tender(db: Session, bidder: Bidder, tender_id: str) ->
 
 
 # ---------------------------------------------------------------------------
-# Action Required — the core translation layer
+# Action Required, the core translation layer
 # ---------------------------------------------------------------------------
 
 def _translate_requirement_issue(ev: RequirementEvaluation, is_mandatory: bool, tender: Tender) -> Optional[dict]:

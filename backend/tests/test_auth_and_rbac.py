@@ -45,7 +45,7 @@ def test_admin_role_can_create_tender(client, admin_headers):
 
 
 def test_officer_role_cannot_create_tender(client, officer_headers):
-    # Procurement Officer's role is reviewing/verifying/evaluating bidders —
+    # Procurement Officer's role is reviewing/verifying/evaluating bidders -
     # not creating or publishing tenders. That is Admin-only.
     r = client.post("/api/v1/tenders", json={**TENDER_PAYLOAD, "tender_number": "X/3"}, headers=officer_headers)
     assert r.status_code == 403
@@ -99,7 +99,7 @@ def test_register_admin_with_non_privileged_domain_email_rejected(client):
     )
     assert r.status_code == 422, r.text
     assert "@cpcl.gov.in" in r.json()["error"]["message"]
-    # It must not have been created at all — not even as a downgraded role.
+    # It must not have been created at all, not even as a downgraded role.
     login = client.post("/api/v1/auth/login", json={"email": "admin@gmail.com", "password": "Password123"})
     assert login.status_code == 401
 

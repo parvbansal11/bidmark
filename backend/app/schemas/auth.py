@@ -10,7 +10,7 @@ class RegisterRequest(BaseModel):
     settings.PRIVILEGED_ROLE_EMAIL_DOMAIN): a BIDDER account has no
     restriction, but an ADMIN or PROCUREMENT_OFFICER account may only be
     self-registered with an email address on the configured privileged
-    domain. This is a plain string/format check — it does not verify mailbox
+    domain. This is a plain string/format check, it does not verify mailbox
     ownership, send email, or check DNS. Admin/Officer accounts can also
     still be provisioned by an existing Admin via app/api/v1/users.py, which
     remains unchanged."""

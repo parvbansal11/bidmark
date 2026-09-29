@@ -1,5 +1,5 @@
 """
-MockDocumentProvider — deterministic, seeded document intelligence. Used
+MockDocumentProvider, deterministic, seeded document intelligence. Used
 whenever ForensicExtractionProvider cannot read the file (which, for a
 hackathon prototype where most demo documents are placeholder uploads, is the
 common path). Fields are derived from the bidder's own on-file data so

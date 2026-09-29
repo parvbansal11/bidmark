@@ -2,7 +2,7 @@
 Document DNA / Fingerprinting engine (USP 2). Builds a stable fingerprint for
 each document (file hash, normalized-text hash, structural + metadata
 features) and compares fingerprints across bidders to surface reused
-templates or unusually similar submissions — framed strictly as a signal for
+templates or unusually similar submissions, framed strictly as a signal for
 manual review, never as proof of collusion.
 """
 from __future__ import annotations

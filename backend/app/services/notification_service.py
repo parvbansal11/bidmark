@@ -6,11 +6,10 @@ plain language, no internal engine/AI terminology, and never a reference to
 another bidder's data. See app/services/bidder_portal_service.py for the
 broader translation layer this feeds into (Action Required items etc.).
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models.bid import BidSubmission
 from app.models.document import Document
 from app.models.notification import Notification
 from app.models.tender import Tender, TenderBidder

@@ -91,7 +91,7 @@ class BidmarkAnalysisOut(BaseModel):
 
 class BidmarkSummaryOut(BaseModel):
     """
-    Simplified summary for the Bidder Portal — no internal module names.
+    Simplified summary for the Bidder Portal, no internal module names.
     All verdicts are translated to bidder-friendly language.
     """
     entity_status: str       # "Confirmed" | "Needs Attention" | "Issue Detected"

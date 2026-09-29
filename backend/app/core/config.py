@@ -1,6 +1,6 @@
 """
 Application configuration, loaded from environment variables / .env file.
-Never hardcode secrets — everything sensitive is read from the environment.
+Never hardcode secrets, everything sensitive is read from the environment.
 """
 from functools import lru_cache
 from typing import List
@@ -11,10 +11,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    APP_NAME: str = "GeM Bid Compliance Verification Platform"
+    APP_NAME: str = "Bidmark"
     ENVIRONMENT: str = "development"
 
-    DATABASE_URL: str = "sqlite:///./gem_compliance.db"
+    DATABASE_URL: str = "sqlite:///./bidmark.db"
 
     JWT_SECRET: str = "insecure-dev-secret-change-me"
     JWT_ALGORITHM: str = "HS256"
@@ -34,7 +34,8 @@ class Settings(BaseSettings):
     MOCK_GOVERNMENT_API: bool = True
 
     AI_PROVIDER: str = "mock"  # "mock" | "llm"
-    LLM_API_KEY: str = ""
+    LLM_API_KEY: str = ""  # Anthropic API key; empty uses the SDK's own credential chain
+    LLM_MODEL: str = "claude-opus-5"
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:3000"
 
@@ -42,7 +43,7 @@ class Settings(BaseSettings):
     # ADMIN or PROCUREMENT_OFFICER account (in addition to BIDDER, which has
     # no restriction) only when the email address ends with this domain. This
     # does NOT verify mailbox ownership, send any email, or check DNS/MX
-    # records — it is a format check only, intentionally, for demo purposes.
+    # records, it is a format check only, intentionally, for demo purposes.
     # Centralized here so the domain can be changed (or this whole rule
     # retired) via one environment variable, without touching auth logic.
     PRIVILEGED_ROLE_EMAIL_DOMAIN: str = "cpcl.gov.in"

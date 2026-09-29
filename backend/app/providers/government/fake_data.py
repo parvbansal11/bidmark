@@ -1,6 +1,6 @@
 """
 Shared fictional-data helpers for the Mock Government Verification API
-Gateway. Nothing here touches a real registry — it is pure pseudo-random
+Gateway. Nothing here touches a real registry, it is pure pseudo-random
 generation seeded off the identifier being verified so results are stable.
 """
 from __future__ import annotations

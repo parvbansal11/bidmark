@@ -1,5 +1,5 @@
 """
-Red Flag Cascade (USP 5) — turns each discrepancy/anomaly into an explainable
+Red Flag Cascade (USP 5), turns each discrepancy/anomaly into an explainable
 chain: source evidence -> anomaly -> affected requirement -> score impact ->
 risk level -> review recommendation -> officer action. This is what makes the
 AI's reasoning auditable end-to-end rather than a single opaque number.

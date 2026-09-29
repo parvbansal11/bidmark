@@ -1,10 +1,9 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
-# System deps needed by pypdf / scikit-learn wheels build tooling on some platforms
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
+# Tesseract reads scanned certificates; poppler-free because pdfplumber renders with pdfium.
+RUN apt-get update && apt-get install -y --no-install-recommends tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -12,14 +11,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/uploads
-
 ENV PYTHONUNBUFFERED=1 \
-    DATABASE_URL=sqlite:////app/data/gem_compliance.db \
-    UPLOAD_DIRECTORY=/app/uploads
+    DATABASE_URL=sqlite:////app/data/bidmark.db \
+    UPLOAD_DIRECTORY=/app/data/uploads \
+    TRUST_ROOTS_DIR=/app/data/trust-roots \
+    DEMO_CA_DIR=/app/data/demo-ca \
+    SANDBOX_REGISTRY_PATH=/app/data/sandbox_registry.json
 
-RUN mkdir -p /app/data
+RUN mkdir -p /app/data && chmod +x /app/start.sh
 
 EXPOSE 8000
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/start.sh"]

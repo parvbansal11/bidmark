@@ -1,5 +1,5 @@
 """
-BIDMARK Verification Architecture — three-module + fusion engine.
+BIDMARK Verification Architecture, three-module + fusion engine.
 
 Module 1 – Entity Registration Intelligence
   Cross-checks entity identifiers (GST / PAN / MCA / UDYAM) against
@@ -18,7 +18,7 @@ Data Science Verdict Fusion
   Combines all three verdicts, detects cross-module inconsistencies, and
   produces a single Fusion Verdict with an explainability layer.
 
-IMPORTANT — consent / privacy rules
+IMPORTANT, consent / privacy rules
 • All data access is logged in the consent_audit trail (what, why, source,
   authorization, timestamp).
 • "Consent-based and authorised data sources" only.  No claims of unrestricted
@@ -30,7 +30,6 @@ IMPORTANT — consent / privacy rules
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -41,7 +40,7 @@ from app.models.compliance import ComplianceReport
 from app.models.document import Document, DocumentExtraction
 from app.models.forensics import ForensicAnalysis
 from app.models.tender import Tender
-from app.models.verification import CrossCheckResult, VerificationResult
+from app.models.verification import VerificationResult
 from app.engines.cartel_engine import analyse_tender
 from app.providers.government.registry import GovernmentVerificationProvider
 
@@ -77,7 +76,7 @@ def _verdict_from_score(score: float) -> str:
     return "FLAGGED"
 
 
-# ── Module 1 — Entity Registration Intelligence ───────────────────────────────
+# ── Module 1, Entity Registration Intelligence ───────────────────────────────
 
 def _run_entity_module(
     db: Session,
@@ -89,10 +88,10 @@ def _run_entity_module(
     MCA21, UDYAM).  Returns (verdict, confidence, summary, checks[]).
 
     Authorized data sources used (mock):
-      • GSTN API — GST registration status
-      • NSDL PAN Verification API — PAN status and legal name
-      • MCA21 Company/LLP Master Data — CIN / company status
-      • UDYAM Registration Portal — MSME certificate
+      • GSTN API, GST registration status
+      • NSDL PAN Verification API, PAN status and legal name
+      • MCA21 Company/LLP Master Data, CIN / company status
+      • UDYAM Registration Portal, MSME certificate
     """
     checks: list[dict] = []
     audit.append(_audit_entry("GST Registration", "GSTN API (Mock)", "Authorized government API", "Entity registration verification"))
@@ -122,7 +121,7 @@ def _run_entity_module(
             "identifier": None,
             "value": None,
             "expected": "Active",
-            "note": "No GSTIN provided — GST entity check skipped.",
+            "note": "No GSTIN provided, GST entity check skipped.",
         })
 
     # -- PAN check --
@@ -147,7 +146,7 @@ def _run_entity_module(
             "identifier": None,
             "value": None,
             "expected": "ACTIVE",
-            "note": "No PAN number provided — PAN entity check skipped.",
+            "note": "No PAN number provided, PAN entity check skipped.",
         })
 
     # -- MCA check --
@@ -172,7 +171,7 @@ def _run_entity_module(
             "identifier": None,
             "value": None,
             "expected": "Active",
-            "note": "No CIN provided — MCA company check skipped.",
+            "note": "No CIN provided, MCA company check skipped.",
         })
 
     # -- UDYAM check --
@@ -197,7 +196,7 @@ def _run_entity_module(
             "identifier": None,
             "value": None,
             "expected": "Valid MSME",
-            "note": "No UDYAM number provided — MSME check skipped.",
+            "note": "No UDYAM number provided, MSME check skipped.",
         })
 
     # -- Entity name consistency across government registries --
@@ -243,14 +242,14 @@ def _run_entity_module(
     if verdict == "VERIFIED":
         summary = "All available entity identifiers verified against authorised government registries. No name or registration conflicts detected."
     elif verdict == "NEEDS_REVIEW":
-        summary = "Partial entity verification — some identifiers confirmed but one or more registries returned inconclusive results. Manual cross-check recommended."
+        summary = "Partial entity verification, some identifiers confirmed but one or more registries returned inconclusive results. Manual cross-check recommended."
     else:
         summary = "Entity verification flagged significant conflicts across registries. Identifiers or legal name may not match authorised government records."
 
     return verdict, confidence, summary, checks
 
 
-# ── Module 2 — Behavioural / Risk Intelligence ────────────────────────────────
+# ── Module 2, Behavioural / Risk Intelligence ────────────────────────────────
 
 def _run_compliance_module(
     db: Session,
@@ -260,13 +259,13 @@ def _run_compliance_module(
 ) -> tuple[str, float, str, list]:
     """
     Surfaces behavioural risk indicators using consent-based and authorised data
-    sources only — i.e. GST filing patterns (with bidder consent for demo),
+    sources only, i.e. GST filing patterns (with bidder consent for demo),
     submission timing anomalies, and cross-bidder signals.
 
     Authorised data sources (mock):
-      • GST Return Filing History — GSTN API (consent-based for demo)
-      • Cross-bidder submission metadata — platform internal data
-      • Bid submission timing — platform internal data
+      • GST Return Filing History, GSTN API (consent-based for demo)
+      • Cross-bidder submission metadata, platform internal data
+      • Bid submission timing, platform internal data
 
     NOT accessed (privacy boundary):
       • Private bank accounts or transaction history
@@ -277,14 +276,14 @@ def _run_compliance_module(
     checks: list[dict] = []
     audit.append(_audit_entry(
         "GST Filing Pattern",
-        "GSTN API — Return Filing Status (Mock)",
+        "GSTN API, Return Filing Status (Mock)",
         "Consent-based and authorised data source",
         "GST compliance pattern analysis (not individual transaction data)",
     ))
     audit.append(_audit_entry(
         "Bid Submission Metadata",
         "Platform internal data",
-        "Authorised — platform operator data only",
+        "Authorised, platform operator data only",
         "Submission timing and completeness analysis",
     ))
 
@@ -329,7 +328,7 @@ def _run_compliance_module(
         checks.append({
             "check": "Document Submission Completeness",
             "status": "PASS" if doc_complete else "FLAG",
-            "source": "Platform internal — compliance engine",
+            "source": "Platform internal, compliance engine",
             "identifier": f"Compliance score: {submit_score:.1f}",
             "value": f"{submit_score:.1f}%",
             "expected": "≥ 60%",
@@ -347,9 +346,9 @@ def _run_compliance_module(
         checks.append({
             "check": "Behavioural Risk Indicators",
             "status": "PASS" if beh_ok else "FLAG",
-            "source": "BIDMARK Behavioural Engine — platform internal",
+            "source": "BIDMARK Behavioural Engine, platform internal",
             "identifier": f"Behavioral risk score: {behavior_report.behavioral_risk_score}",
-            "value": f"{flag_count} flag(s) detected — risk score {behavior_report.behavioral_risk_score}",
+            "value": f"{flag_count} flag(s) detected, risk score {behavior_report.behavioral_risk_score}",
             "expected": "Risk score < 40",
             "note": (
                 "No significant behavioural anomalies detected."
@@ -416,7 +415,7 @@ def _run_compliance_module(
     return verdict, confidence, summary, checks
 
 
-# ── Module 3 — Document Intelligence + DigiLocker ────────────────────────────
+# ── Module 3, Document Intelligence + DigiLocker ────────────────────────────
 
 def _run_document_module(
     db: Session,
@@ -433,27 +432,27 @@ def _run_document_module(
     DigiLocker's Pull API.  In this demo, DigiLocker status is simulated.
 
     Authorised data sources:
-      • Platform document repository — bidder's uploaded documents
-      • DigiLocker Pull API (Mock) — document authenticity via issuing authority
-      • Forensic analysis — platform internal
+      • Platform document repository, bidder's uploaded documents
+      • DigiLocker Pull API (Mock), document authenticity via issuing authority
+      • Forensic analysis, platform internal
     """
     checks: list[dict] = []
     audit.append(_audit_entry(
         "Uploaded Documents",
         "Platform document repository",
-        "Authorised — bidder uploaded documents",
+        "Authorised, bidder uploaded documents",
         "Document presence and format verification",
     ))
     audit.append(_audit_entry(
         "Document Authenticity",
         "DigiLocker Pull API (Mock / Architecture Demo)",
-        "Authorised — bidder consent assumed for demo",
+        "Authorised, bidder consent assumed for demo",
         "Cryptographic authenticity verification via issuing authority",
     ))
     audit.append(_audit_entry(
         "Forensic Signals",
-        "Platform internal — BIDMARK Document Forensics Module",
-        "Authorised — platform operator",
+        "Platform internal, BIDMARK Document Forensics Module",
+        "Authorised, platform operator",
         "Digital forensic integrity analysis",
     ))
 
@@ -469,7 +468,7 @@ def _run_document_module(
     for cat in required_categories:
         present = cat in doc_categories
         checks.append({
-            "check": f"Document Present — {cat}",
+            "check": f"Document Present, {cat}",
             "status": "PASS" if present else "FLAG",
             "source": "Platform document repository",
             "identifier": cat,
@@ -503,7 +502,7 @@ def _run_document_module(
         checks.append({
             "check": "Document Verification Status",
             "status": "PASS" if doc_vr_score >= 0.7 else ("FLAG" if doc_vr_score < 0.4 else "REVIEW"),
-            "source": "Platform — government mock verification results",
+            "source": "Platform, government mock verification results",
             "identifier": f"{len(docs)} document(s)",
             "value": f"{verified_count} verified, {review_count} need review, {len(docs) - verified_count - review_count} pending",
             "expected": "≥ 70% verified",
@@ -598,7 +597,7 @@ def _run_document_module(
     elif verdict == "NEEDS_REVIEW":
         summary = "Most documents pass integrity checks, but one or more items need manual officer review before a final decision can be made."
     else:
-        summary = "Significant document integrity issues detected — missing mandatory documents, name mismatches, or forensic anomalies. Recommend clarification before proceeding."
+        summary = "Significant document integrity issues detected, missing mandatory documents, name mismatches, or forensic anomalies. Recommend clarification before proceeding."
 
     return verdict, confidence, summary, checks
 
@@ -670,9 +669,9 @@ def _fuse_verdicts(
     for inc in inconsistencies:
         severity = inc["severity"]
         how_serious = (
-            "HIGH — may significantly affect verification outcome"
+            "HIGH, may significantly affect verification outcome"
             if severity == "HIGH"
-            else "MEDIUM — should be reviewed but may not block approval"
+            else "MEDIUM, should be reviewed but may not block approval"
         )
         flags.append({
             "flag": inc["what"],
@@ -690,11 +689,11 @@ def _fuse_verdicts(
     # Cross-module inconsistency: entity OK but document flags
     if entity_verdict == "VERIFIED" and document_verdict == "FLAGGED":
         flags.append({
-            "flag": "Cross-Module Inconsistency — Entity vs Document",
+            "flag": "Cross-Module Inconsistency, Entity vs Document",
             "what": "Entity registration verified, but document integrity flagged",
             "why": "The government registries confirm the entity exists and is active, but submitted documents carry integrity warnings. This combination may indicate document substitution or tampering.",
             "which_source": "Entity Module (GSTN/NSDL/MCA) vs Document Module (Platform forensics)",
-            "how_serious": "HIGH — cross-module contradiction requires mandatory officer investigation",
+            "how_serious": "HIGH, cross-module contradiction requires mandatory officer investigation",
             "what_to_review": "Request the bidder to re-submit the flagged documents, and verify directly against the registries if necessary.",
             "module": "Cross-Module Fusion",
             "severity": "HIGH",
@@ -713,11 +712,11 @@ def _fuse_verdicts(
 
     if compliance_verdict == "VERIFIED" and entity_verdict == "FLAGGED":
         flags.append({
-            "flag": "Cross-Module Inconsistency — Compliance vs Entity",
+            "flag": "Cross-Module Inconsistency, Compliance vs Entity",
             "what": "Compliance indicators look acceptable, but entity registration could not be verified",
             "why": "The bidder shows acceptable behavioural patterns, but fundamental registration identity issues remain unresolved.",
             "which_source": "Compliance Module vs Entity Module",
-            "how_serious": "HIGH — entity identity must be resolved before approval",
+            "how_serious": "HIGH, entity identity must be resolved before approval",
             "what_to_review": "Resolve entity registration issues first. Do not proceed to approval until identity is confirmed.",
             "module": "Cross-Module Fusion",
             "severity": "HIGH",

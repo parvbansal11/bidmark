@@ -6,3 +6,7 @@ uploads/*
 !uploads/.gitkeep
 *.db
 .env
+.venv/
+trust-roots/
+demo-ca/
+data/

@@ -1,3 +1,5 @@
+> Superseded. This describes the earlier prototype (simulated forensic signals, 44 tests). The current technical approach is in ../USPS.md and ../WORKFLOW.md.
+
 # TECHNICAL APPROACH — SIH Slide Prep (grounded in actual codebase)
 
 Everything below was pulled from the actual repository (backend/app and frontend/src), not written from memory of a generic template. Where the prototype uses real code vs. simulated behavior is called out explicitly, because that distinction is what protects you in front of judges.

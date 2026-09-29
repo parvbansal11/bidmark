@@ -1,5 +1,5 @@
 """
-Cross-document verification engine — the core "consistency" intelligence
+Cross-document verification engine, the core "consistency" intelligence
 layer. It compares fields extracted from a bidder's different documents (and
 the bidder's own declared profile) against each other and flags where they
 agree, show a minor variation, or materially disagree.
@@ -181,8 +181,6 @@ def run_cross_check(db: Session, bidder_id: str, tender_id: str) -> dict:
         if not embedded:
             add_discrepancy("PAN_GST_MISMATCH", f"PAN ({pan_value}) is not embedded correctly in GSTIN ({gstin_value}).", "HIGH", "GST", -12, cc, code="PAN_GST_MISMATCH")
 
-    # 3. GST <-> UDYAM (via company name, already substantially covered above) + address
-    udyam_doc = by_category.get("UDYAM")
 
     # 4. Address consistency: bidder profile vs any document address
     addr_sources, addr_values = ["BIDDER_PROFILE"], [bidder.registered_address]

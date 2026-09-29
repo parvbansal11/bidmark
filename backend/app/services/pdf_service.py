@@ -4,7 +4,7 @@ a bidder's compliance report for a tender, and a bid submission receipt.
 
 Built with reportlab (Platypus) rather than hand-rolled layout so both
 documents share one consistent, government-procurement-appropriate look:
-a plain title block, a details table, and clearly labeled sections — no
+a plain title block, a details table, and clearly labeled sections, no
 external assets, so this works offline and byte-for-byte the same in dev
 and in any deployment.
 """
@@ -87,11 +87,11 @@ def build_compliance_report_pdf(bidder: Bidder, tender: Tender, report: Complian
     story.append(_kv_table([
         ("Tender", tender.title),
         ("Tender reference", tender.tender_number),
-        ("GeM Tender ID", tender.gem_tender_id or "—"),
+        ("GeM Tender ID", tender.gem_tender_id or "-"),
         ("Department", tender.department),
         ("Bidder / Company", bidder.company_name),
-        ("GSTIN", bidder.gstin or "—"),
-        ("PAN", bidder.pan_number or "—"),
+        ("GSTIN", bidder.gstin or "-"),
+        ("PAN", bidder.pan_number or "-"),
     ]))
 
     story.append(Paragraph("Compliance Summary", _SECTION))
@@ -105,7 +105,7 @@ def build_compliance_report_pdf(bidder: Bidder, tender: Tender, report: Complian
             ("Requirements failed", str(report.failed_count)),
             ("Pending", str(report.pending_count)),
             ("Requires review", str(report.requires_review_count)),
-            ("Report generated at", report.created_at.strftime("%d %b %Y, %H:%M UTC") if report.created_at else "—"),
+            ("Report generated at", report.created_at.strftime("%d %b %Y, %H:%M UTC") if report.created_at else "-"),
         ]))
 
         story.append(Paragraph("Requirement-by-requirement status", _SECTION))
@@ -115,7 +115,7 @@ def build_compliance_report_pdf(bidder: Bidder, tender: Tender, report: Complian
             rows.append([
                 ev.requirement_type.replace("_", " ").title(),
                 ev.status,
-                Paragraph((ev.explanation or "—")[:180], _BODY),
+                Paragraph((ev.explanation or "-")[:180], _BODY),
             ])
         t = Table(rows, colWidths=[45 * mm, 30 * mm, 90 * mm], repeatRows=1)
         style = [
@@ -151,32 +151,32 @@ def build_bid_receipt_pdf(bidder: Bidder, tender: Tender, submission: BidSubmiss
     story.append(_kv_table([
         ("Bid submission ID", submission.id),
         ("Status", submission.status),
-        ("Submitted at", submission.submitted_at.strftime("%d %b %Y, %H:%M UTC") if submission.submitted_at else "—"),
-        ("Quoted price (₹)", f"{submission.quoted_price:,.2f}" if submission.quoted_price is not None else "—"),
-        ("Local content declared (%)", f"{submission.local_content_percent}" if submission.local_content_percent is not None else "—"),
-        ("Declared turnover (₹ crore)", f"{submission.declared_turnover_crore}" if submission.declared_turnover_crore is not None else "—"),
+        ("Submitted at", submission.submitted_at.strftime("%d %b %Y, %H:%M UTC") if submission.submitted_at else "-"),
+        ("Quoted price (₹)", f"{submission.quoted_price:,.2f}" if submission.quoted_price is not None else "-"),
+        ("Local content declared (%)", f"{submission.local_content_percent}" if submission.local_content_percent is not None else "-"),
+        ("Declared turnover (₹ crore)", f"{submission.declared_turnover_crore}" if submission.declared_turnover_crore is not None else "-"),
     ]))
 
     story.append(Paragraph("Tender", _SECTION))
     story.append(_kv_table([
         ("Tender title", tender.title),
         ("Tender reference", tender.tender_number),
-        ("GeM Tender ID", tender.gem_tender_id or "—"),
+        ("GeM Tender ID", tender.gem_tender_id or "-"),
         ("Department", tender.department),
-        ("Submission deadline", tender.deadline.strftime("%d %b %Y, %H:%M UTC") if tender.deadline else "—"),
+        ("Submission deadline", tender.deadline.strftime("%d %b %Y, %H:%M UTC") if tender.deadline else "-"),
     ]))
 
     story.append(Paragraph("Bidder", _SECTION))
     story.append(_kv_table([
         ("Company name", bidder.company_name),
-        ("GSTIN", bidder.gstin or "—"),
-        ("PAN", bidder.pan_number or "—"),
+        ("GSTIN", bidder.gstin or "-"),
+        ("PAN", bidder.pan_number or "-"),
     ]))
 
     story.append(Spacer(1, 10))
     story.append(Paragraph(
         "This receipt confirms that the above bid details were recorded by the platform at the time shown. "
-        "It is not a certificate of compliance or eligibility — see the separate Compliance Report for that.",
+        "It is not a certificate of compliance or eligibility, see the separate Compliance Report for that.",
         _MOCK_NOTE,
     ))
     doc.build(story)

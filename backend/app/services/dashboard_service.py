@@ -1,6 +1,6 @@
 """
 Aggregation logic backing the dashboard, review-queue, risk-summary and
-Bidder 360 investigation view. Read-only — never mutates state.
+Bidder 360 investigation view. Read-only, never mutates state.
 """
 from sqlalchemy.orm import Session
 
