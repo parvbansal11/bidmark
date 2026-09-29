@@ -14,6 +14,10 @@ class ForensicAnalysis(Base, UUIDMixin, TimestampMixin):
     signals: Mapped[list] = mapped_column(JSON, default=list)
     evidence: Mapped[list] = mapped_column(JSON, default=list)
     requires_human_review: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Which checks ran and which could not (UNMEASURED is never reported as clean).
+    checks: Mapped[list] = mapped_column(JSON, default=list)
+    # Metadata, revision count, signatures and fonts as read from the file.
+    structure: Mapped[dict] = mapped_column(JSON, default=dict)
 
     document = relationship("Document", back_populates="forensic_analysis")
 
