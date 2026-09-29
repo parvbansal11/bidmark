@@ -16,3 +16,4 @@ frontend/.env
 # OS / editor
 .DS_Store
 *.swp
+backend/.venv/
