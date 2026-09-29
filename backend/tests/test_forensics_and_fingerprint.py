@@ -41,12 +41,12 @@ def test_forensic_analysis_flags_cross_bidder_identical_file_reuse(client, offic
     assert not any("fake" in e.lower() or "fraud" in e.lower() for e in data_a["evidence"])
 
 
-def test_forensic_analysis_small_file_flag(client, officer_headers, sample_bidder):
+def test_forensic_analysis_flags_unreadable_file(client, officer_headers, sample_bidder):
     doc = _upload_bytes(client, officer_headers, sample_bidder["id"], "PAN", b"tiny", filename="tiny.pdf")
     r = client.post(f"/api/v1/forensics/analyze/{doc['id']}", headers=officer_headers)
     assert r.status_code == 200
     data = r.json()["data"]
-    assert any(s["type"] == "SUSPICIOUSLY_SMALL_FILE" for s in data["signals"])
+    assert any(s["type"] == "UNREADABLE" for s in data["signals"])
 
 
 def test_fingerprint_self_comparison_is_maximally_similar(client, officer_headers, sample_bidder):

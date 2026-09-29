@@ -21,6 +21,13 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
 
     UPLOAD_DIRECTORY: str = "./uploads"
+    # PEM certificates trusted as signing roots (the CCA India root in production,
+    # the synthetic demo CA in development).
+    TRUST_ROOTS_DIR: str = "./trust-roots"
+    DEMO_CA_DIR: str = "./demo-ca"
+    # When a file has no readable text, fabricate fields from the bidder profile
+    # (flagged simulated) instead of leaving them empty. Off in production.
+    SIMULATE_UNREADABLE_DOCUMENTS: bool = True
     MAX_UPLOAD_SIZE_MB: int = 15
 
     MOCK_GOVERNMENT_API: bool = True

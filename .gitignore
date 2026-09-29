@@ -17,3 +17,5 @@ frontend/.env
 .DS_Store
 *.swp
 backend/.venv/
+backend/trust-roots/
+backend/demo-ca/

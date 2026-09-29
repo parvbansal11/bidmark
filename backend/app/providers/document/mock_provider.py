@@ -1,6 +1,6 @@
 """
 MockDocumentProvider — deterministic, seeded document intelligence. Used
-whenever LocalOCRProvider cannot find a usable text layer (which, for a
+whenever ForensicExtractionProvider cannot read the file (which, for a
 hackathon prototype where most demo documents are placeholder uploads, is the
 common path). Fields are derived from the bidder's own on-file data so
 cross-document checks and compliance evaluation have something meaningful to

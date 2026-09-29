@@ -39,7 +39,7 @@ def test_ocr_extraction_populates_fields(client, officer_headers, sample_bidder)
     assert r.status_code == 200
     data = r.json()["data"]
     assert data["gstin"] == sample_bidder["gstin"]
-    assert data["extraction_provider"] in ("MockDocumentProvider", "LocalOCRProvider")
+    assert data["extraction_provider"] == "MockDocumentProvider" or data["extraction_provider"].startswith("BidmarkForensics")
 
 
 def test_gst_verification_via_mock_gateway(client, officer_headers, sample_bidder):

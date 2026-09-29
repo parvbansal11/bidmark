@@ -8,13 +8,14 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.models.document import Document, DocumentExtraction
 from app.models.verification import VerificationResult
-from app.providers.document.local_ocr_provider import LocalOCRProvider
+from app.forensics import names
+from app.providers.document.forensic_provider import ForensicExtractionProvider
 from app.providers.document.mock_provider import MockDocumentProvider
 from app.providers.government.registry import GovernmentVerificationProvider
 from app.utils.constants import CATEGORY_TO_REGISTRY, REQUIRED_FIELDS_BY_CATEGORY
 from app.utils.ids import new_id
 
-_local_ocr = LocalOCRProvider()
+_reader = ForensicExtractionProvider()
 _mock_provider = MockDocumentProvider()
 
 
@@ -52,9 +53,18 @@ def save_document(db: Session, bidder_id: str, category: str, upload: UploadFile
 
 def extract_document(db: Session, document: Document) -> DocumentExtraction:
     bidder = document.bidder
-    fields = _local_ocr.extract(document, bidder, document.file_path)
+    inspection = _reader.inspect(document, document.file_path) if document.file_path and os.path.exists(document.file_path) else None
+    fields = _reader.extract(document, bidder, document.file_path, inspection) if inspection else None
     if not fields:
-        fields = _mock_provider.extract(document, bidder, document.file_path)
+        if not settings.SIMULATE_UNREADABLE_DOCUMENTS:
+            fields = {"extraction_provider": "BidmarkForensics:unreadable", "extraction_confidence": 0.0,
+                      "raw_extracted_fields": {"simulated": False, "unreadable": True, "inspection": inspection}}
+        else:
+            # Placeholder uploads in dev and tests: fabricate fields from the profile,
+            # and say so everywhere the extraction is shown.
+            fields = _mock_provider.extract(document, bidder, document.file_path)
+            fields["raw_extracted_fields"]["simulated"] = True
+            fields["raw_extracted_fields"]["inspection"] = inspection
 
     existing = db.query(DocumentExtraction).filter(DocumentExtraction.document_id == document.id).first()
     if existing:
@@ -83,13 +93,7 @@ def _dates_valid(validity_date: str | None) -> bool:
 
 
 def _name_similarity_ok(name_a: str | None, name_b: str | None) -> bool:
-    if not name_a or not name_b:
-        return True
-    a = "".join(name_a.lower().split())
-    b = "".join(name_b.lower().split())
-    a = a.replace("privatelimited", "pvtltd").replace("limited", "ltd")
-    b = b.replace("privatelimited", "pvtltd").replace("limited", "ltd")
-    return a == b or a in b or b in a
+    return names.compare(name_a, name_b)["verdict"] in ("SAME", "UNMEASURED")
 
 
 def verify_document(db: Session, document: Document) -> VerificationResult:

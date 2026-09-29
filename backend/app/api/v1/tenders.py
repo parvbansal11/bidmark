@@ -16,7 +16,7 @@ router = APIRouter(prefix="/api/v1/tenders", tags=["Tenders"])
 
 
 @router.post("")
-def create_tender(payload: TenderCreate, db: Session = Depends(get_db), current_user: User = Depends(require_officer)):
+def create_tender(payload: TenderCreate, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     if db.query(Tender).filter(Tender.tender_number == payload.tender_number).first():
         raise HTTPException(status_code=409, detail=f"A tender with reference number '{payload.tender_number}' already exists")
     if db.query(Tender).filter(Tender.gem_tender_id == payload.gem_tender_id).first():

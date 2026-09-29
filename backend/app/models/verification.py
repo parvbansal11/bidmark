@@ -52,3 +52,6 @@ class Discrepancy(Base, UUIDMixin, TimestampMixin):
     affected_requirement_type: Mapped[str | None] = mapped_column(String(60), nullable=True)
     score_impact: Mapped[float] = mapped_column(default=0.0)
     resolved: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Pins into source documents: [{document_id, category, field, page, bbox, value}]
+    evidence: Mapped[list] = mapped_column(JSON, default=list)
+    code: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)

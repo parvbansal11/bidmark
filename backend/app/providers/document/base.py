@@ -6,7 +6,7 @@ class DocumentExtractionProvider(ABC):
     """
     DocumentExtractionProvider
       ├── MockDocumentProvider   (deterministic synthetic extraction — default)
-      └── LocalOCRProvider       (best-effort real text extraction when the
+      └── ForensicExtractionProvider (real text, positions and forensics when the
                                   uploaded file actually contains readable
                                   text, e.g. a text-layer PDF)
     """

@@ -23,7 +23,10 @@ from typing import Optional
 
 from sqlalchemy.orm import Session
 
+from app.forensics import identifiers as ids
+from app.forensics import names
 from app.models.bid import BidSubmission
+from app.models.tender import Tender
 from app.models.bidder import Bidder
 from app.models.document import Document
 from app.models.verification import CrossCheckResult, Discrepancy
@@ -116,29 +119,55 @@ def run_cross_check(db: Session, bidder_id: str, tender_id: str) -> dict:
         results.append(r)
         return r
 
-    def add_discrepancy(category: str, description: str, severity: str, affected_requirement_type: Optional[str], score_impact: float, cross_check: Optional[CrossCheckResult] = None):
+    def add_discrepancy(category: str, description: str, severity: str, affected_requirement_type: Optional[str], score_impact: float,
+                        cross_check: Optional[CrossCheckResult] = None, code: str | None = None, evidence: list | None = None):
+        if cross_check is not None and cross_check.id is None:
+            db.flush()
         d = Discrepancy(
             bidder_id=bidder_id, tender_id=tender_id, cross_check_result_id=cross_check.id if cross_check else None,
             category=category, description=description, severity=severity,
             affected_requirement_type=affected_requirement_type, score_impact=score_impact,
+            code=code or category, evidence=evidence or [],
         )
         db.add(d)
         discrepancies.append(d)
         return d
 
-    # 1. Company name across all documents that carry one, plus bidder profile
-    name_sources, name_values = ["BIDDER_PROFILE"], [bidder.legal_name or bidder.company_name]
+    def pin(doc: Document, field: str) -> dict:
+        ev = ((doc.extraction.raw_extracted_fields or {}).get("evidence") or {}).get(field) if doc.extraction else None
+        return {"document_id": doc.id, "category": doc.category, "field": field,
+                "page": ev.get("page") if ev else None, "bbox": ev.get("bbox") if ev else None,
+                "value": ev.get("value") if ev else None,
+                "simulated": bool((doc.extraction.raw_extracted_fields or {}).get("simulated")) if doc.extraction else None}
+
+    # 1. Company name: every document against the declared legal name.
+    reference = bidder.legal_name or bidder.company_name
+    name_sources, name_values = ["BIDDER_PROFILE"], [reference]
+    worst = "MATCH"
     for cat, doc in by_category.items():
-        if doc.extraction and doc.extraction.company_name:
-            name_sources.append(cat)
-            name_values.append(doc.extraction.company_name)
-    name_status = classify_values(name_values)
-    if name_status != "NOT_APPLICABLE":
-        cc = add_result("company_name", "PROFILE<->ALL_DOCUMENTS", name_sources, name_values, name_status, name_status == "MAJOR_MISMATCH")
-        if name_status == "MINOR_VARIATION":
-            add_discrepancy("NAME_VARIATION", f"Company name shows minor spelling/legal-suffix variation across {', '.join(name_sources)}.", "LOW", None, -3, cc)
-        elif name_status == "MAJOR_MISMATCH":
-            add_discrepancy("NAME_MISMATCH", f"Company name differs significantly across {', '.join(name_sources)}: {name_values}", "HIGH", None, -15, cc)
+        name = doc.extraction.company_name if doc.extraction else None
+        if not name:
+            continue
+        name_sources.append(cat)
+        name_values.append(name)
+        cmp = names.compare(reference, name)
+        if cmp["verdict"] == "LOOKALIKE":
+            worst = "MAJOR_MISMATCH"
+            cc = add_result("company_name", f"PROFILE<->{cat}", ["BIDDER_PROFILE", cat], [reference, name], "MAJOR_MISMATCH", True)
+            add_discrepancy("NAME_LOOKALIKE", f"The {cat} document is issued to '{name}', not '{reference}'. {cmp['detail']}",
+                            "HIGH", cat, -15, cc, code="NAME_LOOKALIKE", evidence=[pin(doc, "legal_name")])
+        elif cmp["verdict"] == "DIFFERENT":
+            worst = "MAJOR_MISMATCH"
+            cc = add_result("company_name", f"PROFILE<->{cat}", ["BIDDER_PROFILE", cat], [reference, name], "MAJOR_MISMATCH", True)
+            add_discrepancy("NAME_MISMATCH", f"The {cat} document is issued to a different entity: '{name}'.",
+                            "HIGH", cat, -15, cc, code="NAME_MISMATCH", evidence=[pin(doc, "legal_name")])
+        elif cmp["verdict"] == "LEGAL_FORM_DIFFERS":
+            worst = "MAJOR_MISMATCH" if worst != "MAJOR_MISMATCH" else worst
+            cc = add_result("company_name", f"PROFILE<->{cat}", ["BIDDER_PROFILE", cat], [reference, name], "MINOR_VARIATION", True)
+            add_discrepancy("LEGAL_FORM_MISMATCH", f"{cmp['detail']} ({cat}: '{name}').",
+                            "MEDIUM", cat, -8, cc, code="LEGAL_FORM_MISMATCH", evidence=[pin(doc, "legal_name")])
+    if len(name_values) > 1:
+        add_result("company_name", "PROFILE<->ALL_DOCUMENTS", name_sources, name_values, worst, worst == "MAJOR_MISMATCH")
 
     # 2. PAN <-> GST format relationship (GSTIN embeds the PAN)
     pan_doc = by_category.get("PAN")
@@ -150,7 +179,7 @@ def run_cross_check(db: Session, bidder_id: str, tender_id: str) -> dict:
         status = "MATCH" if embedded else "MAJOR_MISMATCH"
         cc = add_result("pan_in_gstin", "PAN<->GST", ["PAN", "GST"], [pan_value, gstin_value], status, not embedded)
         if not embedded:
-            add_discrepancy("PAN_GST_MISMATCH", f"PAN ({pan_value}) is not embedded correctly in GSTIN ({gstin_value}).", "HIGH", "GST", -12, cc)
+            add_discrepancy("PAN_GST_MISMATCH", f"PAN ({pan_value}) is not embedded correctly in GSTIN ({gstin_value}).", "HIGH", "GST", -12, cc, code="PAN_GST_MISMATCH")
 
     # 3. GST <-> UDYAM (via company name, already substantially covered above) + address
     udyam_doc = by_category.get("UDYAM")
@@ -199,14 +228,72 @@ def run_cross_check(db: Session, bidder_id: str, tender_id: str) -> dict:
         except ValueError:
             pass
 
-    # 7. OEM authorization <-> bidder name
+    # 7. Validity measured at the bid date, not today. A certificate that lapsed
+    # before the bid was submitted never qualified, even if the bidder renewed it later.
+    tender = db.query(Tender).filter(Tender.id == tender_id).first()
+    bid_at = bid.submitted_at if bid and bid.submitted_at else (tender.deadline if tender else None)
+    ref_date = bid_at.date() if bid_at else date.today()
+    ref_label = "bid submission date" if bid and bid.submitted_at else "bid deadline" if tender and tender.deadline else "today"
+    validity_days = (tender.bid_validity_days if tender else None) or 0
+    for cat, doc in by_category.items():
+        until_raw = doc.extraction.validity_date if doc.extraction else None
+        if not until_raw:
+            continue
+        try:
+            until = date.fromisoformat(until_raw[:10])
+        except ValueError:
+            continue
+        if until < ref_date:
+            cc = add_result("validity", f"{cat}<->BID_DATE", [cat, "BID"], [until.isoformat(), ref_date.isoformat()], "MAJOR_MISMATCH", True)
+            add_discrepancy("EXPIRED_AT_BID_DATE",
+                            f"The {cat} document expired on {until.isoformat()}, {(ref_date - until).days} day(s) before the {ref_label} "
+                            f"({ref_date.isoformat()}). It was not valid when the bid was made.",
+                            "HIGH", cat, -20, cc, code="EXPIRED_AT_BID_DATE", evidence=[pin(doc, "valid_until")])
+        elif validity_days and (until - ref_date).days < validity_days:
+            cc = add_result("validity", f"{cat}<->BID_VALIDITY", [cat, "BID"], [until.isoformat(), ref_date.isoformat()], "MINOR_VARIATION", True)
+            add_discrepancy("EXPIRES_DURING_BID_VALIDITY",
+                            f"The {cat} document expires on {until.isoformat()}, inside the {validity_days}-day bid validity period.",
+                            "MEDIUM", cat, -5, cc, code="EXPIRES_DURING_BID_VALIDITY", evidence=[pin(doc, "valid_until")])
+
+    # 8. Identifier structure and cross-consistency, profile plus every document.
+    doc_ids = {"pan": set(), "gstin": set(), "cin": set(), "udyam": set()}
+    for doc in by_category.values():
+        e = doc.extraction
+        if not e or (e.raw_extracted_fields or {}).get("simulated"):
+            continue
+        for k in ("pan", "gstin", "cin"):
+            if getattr(e, k):
+                doc_ids[k].add(getattr(e, k))
+        if (e.raw_extracted_fields or {}).get("udyam"):
+            doc_ids["udyam"].add(e.raw_extracted_fields["udyam"])
+    for k, profile_value in (("pan", bidder.pan_number), ("gstin", bidder.gstin), ("cin", bidder.cin), ("udyam", bidder.udyam_number)):
+        if profile_value:
+            doc_ids[k].add(profile_value.upper())
+    for k, vals in doc_ids.items():
+        if len(vals) > 1:
+            cc = add_result(k, "PROFILE<->DOCUMENTS", ["BIDDER_PROFILE", "DOCUMENTS"], sorted(vals), "MAJOR_MISMATCH", True)
+            add_discrepancy(f"{k.upper()}_CONFLICT", f"Two different {k.upper()} values appear across the profile and documents: {', '.join(sorted(vals))}.",
+                            "HIGH", None, -12, cc, code=f"{k.upper()}_CONFLICT")
+    pick = {k: (sorted(v)[0] if v else None) for k, v in doc_ids.items()}
+    idres = ids.cross_validate(pan=pick["pan"], gstin=pick["gstin"], cin=pick["cin"], udyam=pick["udyam"],
+                               legal_name=reference, address=bidder.registered_address,
+                               incorporation_year=bidder.incorporation_date.year if bidder.incorporation_date else None)
+    seen = {d.code for d in discrepancies}
+    for f in idres["findings"]:
+        if f["code"] in seen or (f["code"] == "GSTIN_PAN_MISMATCH" and "PAN_GST_MISMATCH" in seen):
+            continue
+        seen.add(f["code"])
+        impact = {"HIGH": -12, "MEDIUM": -6, "LOW": -2}[f["severity"]]
+        cc = add_result("identifier", "<->".join(f["sources"]), f["sources"], [], "MAJOR_MISMATCH" if f["severity"] == "HIGH" else "MINOR_VARIATION", True)
+        add_discrepancy(f["code"], f["detail"], f["severity"], None, impact, cc, code=f["code"])
+
+    # 9. OEM authorization <-> bidder name
     oem_doc = by_category.get("OEM_AUTHORIZATION")
     if oem_doc and oem_doc.extraction and oem_doc.extraction.company_name:
-        status = classify_values([oem_doc.extraction.company_name, bidder.legal_name or bidder.company_name])
-        if status != "NOT_APPLICABLE":
-            cc = add_result("oem_authorized_entity", "OEM<->BIDDER_PROFILE", ["OEM_AUTHORIZATION", "BIDDER_PROFILE"], [oem_doc.extraction.company_name, bidder.company_name], status, status == "MAJOR_MISMATCH")
-            if status == "MAJOR_MISMATCH":
-                add_discrepancy("OEM_AUTHORIZATION_MISMATCH", "OEM authorization letter names a different entity than the bidder.", "HIGH", "OEM_AUTHORIZATION", -15, cc)
+        cmp = names.compare(oem_doc.extraction.company_name, reference)
+        status = {"SAME": "MATCH", "LEGAL_FORM_DIFFERS": "MINOR_VARIATION"}.get(cmp["verdict"], "MAJOR_MISMATCH")
+        add_result("oem_authorized_entity", "OEM<->BIDDER_PROFILE", ["OEM_AUTHORIZATION", "BIDDER_PROFILE"],
+                   [oem_doc.extraction.company_name, bidder.company_name], status, status == "MAJOR_MISMATCH")
 
     db.commit()
     for r in results:
