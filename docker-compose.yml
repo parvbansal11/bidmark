@@ -1,0 +1,42 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    container_name: gem-compliance-backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:////app/data/gem_compliance.db
+      JWT_SECRET: change-this-to-a-long-random-secret-in-production
+      JWT_ALGORITHM: HS256
+      ACCESS_TOKEN_EXPIRE_MINUTES: "480"
+      UPLOAD_DIRECTORY: /app/uploads
+      MAX_UPLOAD_SIZE_MB: "15"
+      MOCK_GOVERNMENT_API: "true"
+      AI_PROVIDER: mock
+      CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:8080"
+      ENVIRONMENT: development
+      APP_NAME: "GeM Bid Compliance Verification Platform"
+    volumes:
+      - backend-data:/app/data
+      - backend-uploads:/app/uploads
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: http://localhost:8000
+    container_name: gem-compliance-frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
+volumes:
+  backend-data:
+  backend-uploads:
