@@ -26,6 +26,6 @@
     "noUnusedParameters": false,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src"],
-  "exclude": ["src/**/__tests__/*", "src/test/*"]
+  "include": ["src/app", "src/main.tsx"],
+  "exclude": ["src/**/__tests__/*", "src/test/*", "src/app/**/*.test.tsx", "src/app/**/*.test.ts"]
 }

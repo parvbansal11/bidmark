@@ -1,79 +1,108 @@
 # Bidmark
 
-Bid compliance verification for GeM procurement. Smart India Hackathon 2026, PS 26100
-(Ministry of Petroleum & Natural Gas / CPCL).
+Bid compliance verification for public procurement: statutory checks, document evidence and linked-bidder analysis for every bid, with the qualification decision left to the procurement officer.
 
-Bidmark reads every certificate a bidder uploads, checks it against the tender's eligibility
-rules and against the bidder's other documents, points at the exact spot on the page where
-something is wrong, and hands the officer a ranked queue. The officer decides; every step lands
-in a hash-chained audit trail.
+Bidmark reads every certificate a bidder uploads, checks it against the tender's eligibility rules and against the bidder's other documents, pins each finding to the place on the page where it was found, and gives the officer a prioritised queue. Every high finding needs an officer ruling before a decision can be recorded, and every action lands in a hash-chained audit trail.
 
-What makes it different is in [docs/USPS.md](docs/USPS.md). In short:
+## Architecture
 
-- **Document forensics with evidence pins.** Values typed over the original (with the original
-  recovered), edits after digital signing, one-off fonts on key fields, editor re-saves, reused files.
-- **Verification without portal access.** GSTIN check digit, PAN/CIN decoding and cross-checks,
-  signature validation; registries behind an adapter with a sandbox dataset.
-- **Proxy-bidder and cartel detection.** Shared device, network, author, director or file, plus
-  bid-rigging price screens.
-- **No silent overrides.** Every high finding needs an officer's ruling before a decision, and
-  those rulings measure how reliable each rule is.
+```
+GitHub (parvbansal11/bidmark)
+        |
+        +-------------------------+
+        |                         |
+     Vercel                    Render (Docker)
+     frontend/                 backend/
+     React + Vite SPA          FastAPI + SQLAlchemy
+        |                         |  SQLite (seeded on boot)
+        +------ HTTPS /api/v1 ----+  Tesseract, pdfplumber, pyHanko
+                                  |  Anthropic API (optional, server side)
+```
 
-## Run it
+- **Frontend** (`frontend/`): React 19, TypeScript, Vite, Tailwind CSS. The mounted app lives in `frontend/src/app`. It talks to the API only through `VITE_API_BASE_URL`.
+- **Backend** (`backend/`): FastAPI. JWT bearer authentication with four roles (Procurement Officer, Bidder, Auditor, Administrator). SQLite by default; any SQLAlchemy URL works.
+- **Documents**: uploaded files live under `UPLOAD_DIRECTORY`. The seed generates real PDFs, including tampered ones, and a local signing CA for signature checks. Neither is committed.
+- **Registries**: GST, MCA21, Udyam and other lookups answer from a sandbox dataset behind an adapter. Every result is tagged as sandbox; no live government API is called.
+- **Ask Bidmark**: answers questions about one bid from the findings recorded on it. With `AI_PROVIDER=llm` the answers are written by Claude through the Anthropic API, server side only. Otherwise they are assembled from templates over the same findings.
+
+More detail: [docs/WORKFLOW.md](docs/WORKFLOW.md) (roles and case lifecycle), [docs/API.md](docs/API.md), [docs/FRONTEND_CONTRACT.md](docs/FRONTEND_CONTRACT.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Local development
+
+### Backend
 
 ```bash
 cd backend
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-python -m app.seed
-uvicorn app.main:app --reload --port 8000
+cp .env.example .env          # edit as needed
+python -m app.seed            # builds the sample tenders, bidders and documents
+uvicorn app.main:app --reload --port 8001
 ```
 
-API docs at http://localhost:8000/docs. Scanned documents need Tesseract (`brew install tesseract`
-or `apt install tesseract-ocr`); text PDFs don't.
+API docs: http://localhost:8001/docs. Scanned documents need Tesseract (`brew install tesseract` or `apt install tesseract-ocr`); text PDFs do not.
+
+### Frontend
 
 ```bash
 cd frontend
 npm install
-VITE_API_BASE_URL=http://localhost:8000 npm run dev
+npm run dev                   # http://localhost:5173
 ```
 
-Tests: `cd backend && pytest` (107 tests).
+In development Vite proxies `/api` and `/health` to `http://127.0.0.1:8001` (see `vite.config.ts`), so `VITE_API_BASE_URL` can stay empty.
 
-## Demo accounts
+### Sample accounts (seeded)
 
 | Role | Email | Password |
 |---|---|---|
-| Admin | admin@cpcl.gov.in | Admin@123 |
 | Procurement Officer | officer@cpcl.gov.in | Officer@123 |
+| Bidder | alpha@alphaindia.in | Bidder@123 |
 | Auditor | auditor@cpcl.gov.in | Auditor@123 |
-| Bidder (clean) | alpha@alphaindia.in | Bidder@123 |
-| Bidder (flagged) | bharat@bharatflowtech.in | Bidder@123 |
+| Administrator | admin@cpcl.gov.in | Admin@123 |
 
-The seed builds every document as a real PDF, including tampered ones. It never marks a
-bidder good or bad at random. See the top of `backend/app/seed.py` for what each bidder
-demonstrates.
+The seeded data is synthetic. Signing in as several bidders from one machine records shared device and network signals, which the linked-bidder analysis will then report.
 
-## Layout
+## Environment variables
 
+Names only; see `backend/.env.example` and `frontend/.env.example`.
+
+**Frontend** (public, baked into the build): `VITE_API_BASE_URL`.
+
+**Backend**:
+
+| Variable | Purpose |
+|---|---|
+| `DATABASE_URL` | SQLAlchemy URL |
+| `JWT_SECRET`, `JWT_ALGORITHM`, `ACCESS_TOKEN_EXPIRE_MINUTES` | Session tokens (secret required in production) |
+| `CORS_ORIGINS` | Exact web origins allowed to call the API |
+| `PRIVILEGED_ROLE_EMAIL_DOMAIN` | Domain for staff self-registration; empty in production |
+| `UPLOAD_DIRECTORY`, `MAX_UPLOAD_SIZE_MB` | Document storage |
+| `TRUST_ROOTS_DIR`, `DEMO_CA_DIR` | Trusted roots for PDF signature checks |
+| `SANDBOX_REGISTRY_PATH`, `MOCK_GOVERNMENT_API` | Registry adapter |
+| `SIMULATE_UNREADABLE_DOCUMENTS` | Fill unreadable files from the profile, marked simulated |
+| `AI_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS` | Ask Bidmark (key stays server side) |
+| `SEED_ON_BOOT` | Rebuild the sample data on every container start |
+| `ENVIRONMENT`, `APP_NAME` | Runtime labels |
+
+Never put the LLM key or JWT secret in a `VITE_*` variable.
+
+## Testing
+
+```bash
+cd backend && pytest                                   # API, engines, forensics, audit chain
+cd frontend && npm test && npx tsc -p tsconfig.app.json --noEmit && npm run build
 ```
-backend/app/
-  forensics/     text and position extraction, PDF and image forensics, identifier checks, name matching
-  engines/       cross-checks, compliance scoring, cartel detection, fusion, fingerprints, behaviour
-  services/      case workflow, screening, audit chain, telemetry, copilot
-  api/v1/        REST routes (home, cases, evidence, tenders, documents, ...)
-  providers/     government registry adapter (sandbox + mock), document readers, copilot models
-  demo/          synthetic certificate generator and tamper helpers used by the seed and tests
-docs/
-  USPS.md              what sets Bidmark apart, with honest limits
-  WORKFLOW.md          roles, case lifecycle, user flows
-  FRONTEND_CONTRACT.md endpoints per screen
-  DEPLOYMENT.md        Render + Vercel
-```
 
-## Scope
+## Deployment
 
-Registry lookups answer from a sandbox dataset, with a seeded mock behind it; every result is
-tagged `is_mock`. Real GSTN, MCA21 or EPFO access plugs into `providers/government/` without
-changing callers. Recommendations are decision support; the officer's decision is recorded
-separately, with its reason.
+- **Backend** on Render from `render.yaml` (Docker, `backend/Dockerfile`). `start.sh` binds `0.0.0.0:$PORT` and seeds the database when it is missing. The free plan has no persistent disk, so data resets on restart. Set `CORS_ORIGINS` to the Vercel URL.
+- **Frontend** on Vercel: root directory `frontend`, Vite preset, `npm run build`, output `dist`. Set `VITE_API_BASE_URL` to the Render URL. `frontend/vercel.json` rewrites every path to `index.html` for client-side routing.
+
+Step by step: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Scope and limits
+
+- Registry results come from a sandbox dataset and are labelled as such. Real GSTN, MCA21 or EPFO access plugs into `backend/app/providers/government/` without changing callers.
+- Recommendations are decision support. The officer records the qualification decision and its reason, and both are kept with the system assessment in the audit trail.
+- Bidmark is an independent verification layer. It is not the official GeM or CPCL portal.

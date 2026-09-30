@@ -2,7 +2,7 @@
 // Kept intentionally loose (optional fields, string dates) to match the
 // permissive JSON the API actually returns.
 
-export type UserRole = 'BIDDER' | 'PROCUREMENT_OFFICER' | 'ADMIN'
+export type UserRole = 'BIDDER' | 'PROCUREMENT_OFFICER' | 'ADMIN' | 'AUDITOR'
 
 export interface User {
   id: string

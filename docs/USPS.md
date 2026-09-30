@@ -1,6 +1,6 @@
 # Bidmark: what sets it apart
 
-SIH 2026, PS 26100 (MoPNG / CPCL): AI-powered integrated bid compliance verification for GeM.
+Integrated bid compliance verification for public procurement (reference context: Ministry of Petroleum & Natural Gas, CPCL).
 
 The honest objection to this problem statement is that the portal integrations it asks for
 (GSTN, MCA21, EPFO, Udyam, debarment lists) need credentialed government access no student team

@@ -22,3 +22,13 @@ backend/demo-ca/
 backend/data/sandbox_registry.json
 .claude/
 backend/bidmark.db
+
+# Local-only
+frontend-revamp/
+frontend/.env.local
+frontend/.env.*.local
+backend/.env.local
+*.pem
+*.key
+*.p12
+.vercel/

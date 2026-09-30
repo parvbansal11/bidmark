@@ -11,6 +11,13 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class CopilotUnavailable(Exception):
+    """The configured language model could not produce a grounded answer.
+
+    Raised instead of substituting another answer, so the officer is told the
+    assistant is down rather than shown text from a different source."""
+
+
 class AIProvider(ABC):
     @abstractmethod
     def build_recommendation(self, context: dict[str, Any]) -> dict[str, Any]:

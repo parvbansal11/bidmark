@@ -45,6 +45,13 @@ def register(payload: RegisterRequest, db: Session = Depends(get_db)):
     """
     if payload.role in PRIVILEGED_ROLES:
         domain = settings.PRIVILEGED_ROLE_EMAIL_DOMAIN.lower().lstrip("@")
+        # An empty domain turns staff self-registration off; staff accounts then come only from an Admin.
+        if not domain:
+            raise ApiError(
+                "STAFF_SELF_REGISTRATION_DISABLED",
+                "Staff accounts are issued by an administrator.",
+                status_code=403,
+            )
         if not payload.email.lower().endswith(f"@{domain}"):
             raise ApiError(
                 "PRIVILEGED_ROLE_EMAIL_DOMAIN_REQUIRED",

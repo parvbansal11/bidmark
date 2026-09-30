@@ -160,3 +160,15 @@ def test_only_admin_can_provision_officer_or_admin_accounts(client, admin_header
         headers=bidder_user_headers,
     )
     assert r2.status_code == 403
+
+
+def test_empty_privileged_domain_disables_staff_self_registration(client, monkeypatch):
+    # Production sets PRIVILEGED_ROLE_EMAIL_DOMAIN="" so the public endpoint can only create bidders.
+    from app.core.config import settings
+    monkeypatch.setattr(settings, "PRIVILEGED_ROLE_EMAIL_DOMAIN", "")
+    for role in ("ADMIN", "PROCUREMENT_OFFICER", "AUDITOR"):
+        res = client.post("/api/v1/auth/register", json={"email": f"x-{role.lower()}@cpcl.gov.in", "password": "Password123", "full_name": "X", "role": role})
+        assert res.status_code == 403, role
+        assert res.json()["error"]["code"] == "STAFF_SELF_REGISTRATION_DISABLED"
+    res = client.post("/api/v1/auth/register", json={"email": "seller@example.com", "password": "Password123", "full_name": "Seller", "role": "BIDDER"})
+    assert res.status_code in (200, 201)

@@ -100,6 +100,7 @@ def ask_copilot(db: Session, bidder_id: str, tender_id: str, question: str, comp
     evidence = gather_evidence(db, bidder_id, tender_id, compare_bidder_id)
     provider = get_ai_provider()
     result = provider.answer_copilot_question(question, evidence)
+    result.setdefault("provider", "bidmark:templated")
     result["question"] = question
     result["disclaimer"] = "Answers are grounded only in evidence already recorded on the platform and are decision-support only."
     return result
