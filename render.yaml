@@ -16,7 +16,7 @@ services:
       - key: MOCK_GOVERNMENT_API
         value: "true"
       - key: AI_PROVIDER
-        value: mock
+        value: deterministic
       # Only the public web origins that may call the API. Set to the Vercel production URL.
       - key: CORS_ORIGINS
         value: "http://localhost:5173"

@@ -16,14 +16,13 @@ GitHub (parvbansal11/bidmark)
      React + Vite SPA          FastAPI + SQLAlchemy
         |                         |  SQLite (seeded on boot)
         +------ HTTPS /api/v1 ----+  Tesseract, pdfplumber, pyHanko
-                                  |  Anthropic API (optional, server side)
 ```
 
 - **Frontend** (`frontend/`): React 19, TypeScript, Vite, Tailwind CSS. The mounted app lives in `frontend/src/app`. It talks to the API only through `VITE_API_BASE_URL`.
 - **Backend** (`backend/`): FastAPI. JWT bearer authentication with four roles (Procurement Officer, Bidder, Auditor, Administrator). SQLite by default; any SQLAlchemy URL works.
 - **Documents**: uploaded files live under `UPLOAD_DIRECTORY`. The seed generates real PDFs, including tampered ones, and a local signing CA for signature checks. Neither is committed.
 - **Registries**: GST, MCA21, Udyam and other lookups answer from a sandbox dataset behind an adapter. Every result is tagged as sandbox; no live government API is called.
-- **Ask Bidmark**: answers questions about one bid from the findings recorded on it. With `AI_PROVIDER=llm` the answers are written by Claude through the Anthropic API, server side only. Otherwise they are assembled from templates over the same findings.
+- **Ask Bidmark**: a case assistant that answers questions about one bid (why it was flagged, failed or pending checks, open high findings, evidence, linked bidders, decision blockers, rulings, debarment, score and risk). Answers are composed deterministically from the records on the bid, with citations to the findings, documents, checks and audit entries used. No external AI service or API key is involved.
 
 More detail: [docs/WORKFLOW.md](docs/WORKFLOW.md) (roles and case lifecycle), [docs/API.md](docs/API.md), [docs/FRONTEND_CONTRACT.md](docs/FRONTEND_CONTRACT.md), [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
@@ -81,11 +80,11 @@ Names only; see `backend/.env.example` and `frontend/.env.example`.
 | `TRUST_ROOTS_DIR`, `DEMO_CA_DIR` | Trusted roots for PDF signature checks |
 | `SANDBOX_REGISTRY_PATH`, `MOCK_GOVERNMENT_API` | Registry adapter |
 | `SIMULATE_UNREADABLE_DOCUMENTS` | Fill unreadable files from the profile, marked simulated |
-| `AI_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS` | Ask Bidmark (key stays server side) |
+| `AI_PROVIDER` | `deterministic` (Ask Bidmark uses no external service) |
 | `SEED_ON_BOOT` | Rebuild the sample data on every container start |
 | `ENVIRONMENT`, `APP_NAME` | Runtime labels |
 
-Never put the LLM key or JWT secret in a `VITE_*` variable.
+Never put the JWT secret in a `VITE_*` variable.
 
 ## Testing
 

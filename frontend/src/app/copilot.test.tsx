@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApiError } from '@/app/lib/api'
 import { clearCache } from '@/app/lib/useResource'
@@ -26,34 +26,65 @@ function CasePageStub() {
   return <button onClick={open}>Ask Bidmark</button>
 }
 
+function Where() {
+  const l = useLocation()
+  return <p data-testid="where">{l.pathname + l.search}</p>
+}
+
 function renderPanel() {
-  render(<MemoryRouter><CopilotProvider enabled><CasePageStub /></CopilotProvider></MemoryRouter>)
+  render(
+    <MemoryRouter initialEntries={['/officer/cases/c1']}>
+      <CopilotProvider enabled>
+        <Routes><Route path="*" element={<><CasePageStub /><Where /></>} /></Routes>
+      </CopilotProvider>
+    </MemoryRouter>,
+  )
 }
 
 beforeEach(() => {
   vi.clearAllMocks()
   clearCache()
-  svc.status.mockResolvedValue({ mode: 'llm', model: 'claude-opus-5-5' })
+  svc.status.mockResolvedValue({ mode: 'deterministic', model: null })
 })
 
 describe('Ask Bidmark', () => {
-  it('says the assistant is unavailable and shows no answer when the provider fails', async () => {
-    svc.ask.mockRejectedValue(new ApiError('unavailable', 'Verification service unavailable', 503, 'COPILOT_UNAVAILABLE'))
+  it('shows the answer composed by the backend with clickable sources', async () => {
+    svc.ask.mockResolvedValue({
+      intent: 'FINDING_EVIDENCE', answer: 'OEM authorisation: a value is typed over the original (high), in OEM.pdf, page 1.',
+      evidence: [finding.id], question: 'q', disclaimer: '', provider: 'bidmark:deterministic', suggestions: [],
+      citations: [
+        { type: 'finding', id: finding.id, label: 'OEM authorisation: a value is typed over the original', document_id: 'd1', page: 1 },
+        { type: 'check', id: 'DEBARMENT', requirement_type: 'DEBARMENT', label: 'Debarment check' },
+      ],
+    })
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: 'Ask Bidmark' }))
-    await userEvent.click(await screen.findByRole('button', { name: /Why does this bidder require review/ }))
-    expect(await screen.findByText('Bidmark Assistant is temporarily unavailable.')).toBeInTheDocument()
-    expect(screen.queryByText('Evidence cited')).not.toBeInTheDocument()
-    expect(svc.ask).toHaveBeenCalledWith('b1', 't1', 'Why does this bidder require review?')
+    await userEvent.click(await screen.findByRole('button', { name: /Show evidence for the OEM finding/ }))
+    expect(await screen.findByText(/typed over the original \(high\)/)).toBeInTheDocument()
+    expect(screen.getByText(/No external AI service is used/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /OEM authorisation: a value is typed over the original, page 1/ }))
+    expect(screen.getByTestId('where').textContent).toBe(`/officer/cases/c1?tab=documents&finding=${encodeURIComponent(finding.id)}&doc=d1`)
   })
 
-  it('renders cited findings as links to the evidence', async () => {
-    svc.ask.mockResolvedValue({ answer: `The value was retyped [${finding.id}].`, evidence: [finding.id], question: 'q', disclaimer: '', provider: 'anthropic:claude-opus-5-5' })
+  it('offers suggestions instead of guessing when the question is out of scope', async () => {
+    svc.ask.mockResolvedValue({
+      intent: 'UNKNOWN', answer: "I can answer questions about this bidder's compliance checks, findings, evidence, linked bidders, decision status and audit history.",
+      evidence: [], question: 'q', disclaimer: '', citations: [], suggestions: ['What is blocking the final decision?'],
+    })
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: 'Ask Bidmark' }))
-    await userEvent.click(await screen.findByRole('button', { name: /What compliance checks failed/ }))
-    expect(await screen.findByText('Evidence cited')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Value typed over the original/ })).toBeInTheDocument()
-    expect(screen.getByText(/written by claude-opus-5-5/)).toBeInTheDocument()
+    await userEvent.type(await screen.findByLabelText('Ask about this bid'), 'Weather tomorrow?{Enter}')
+    expect(await screen.findByText(/I can answer questions about this bidder/)).toBeInTheDocument()
+    expect(screen.queryByText('Sources')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'What is blocking the final decision?' })).toBeInTheDocument()
+  })
+
+  it('reports a failed request honestly', async () => {
+    svc.ask.mockRejectedValue(new ApiError('unavailable', 'Verification service unavailable', null, null))
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Ask Bidmark' }))
+    await userEvent.click(await screen.findByRole('button', { name: /Why was this bidder flagged/ }))
+    expect(await screen.findByText('Bidmark Assistant is temporarily unavailable.')).toBeInTheDocument()
+    expect(screen.queryByText('Sources')).not.toBeInTheDocument()
   })
 })

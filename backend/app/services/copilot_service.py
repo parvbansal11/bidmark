@@ -10,7 +10,7 @@ from app.models.case import BidCase
 from app.models.behavior import BehavioralFlag
 from app.models.compliance import ComplianceReport, RequirementEvaluation
 from app.models.document import Document
-from app.providers.ai.factory import get_ai_provider
+from app.services import assistant
 from app.services.recommendation_service import build_recommendation
 
 
@@ -97,10 +97,8 @@ def _case_evidence(db: Session, bidder_id: str, tender_id: str) -> dict:
 
 
 def ask_copilot(db: Session, bidder_id: str, tender_id: str, question: str, compare_bidder_id: str | None = None) -> dict:
-    evidence = gather_evidence(db, bidder_id, tender_id, compare_bidder_id)
-    provider = get_ai_provider()
-    result = provider.answer_copilot_question(question, evidence)
-    result.setdefault("provider", "bidmark:templated")
+    """Answer from the records on this case. No language model is involved."""
+    result = assistant.answer(db, bidder_id, tender_id, question)
     result["question"] = question
-    result["disclaimer"] = "Answers are grounded only in evidence already recorded on the platform and are decision-support only."
+    result["disclaimer"] = "Composed from the findings, checks and records on this bid. Decision support only."
     return result

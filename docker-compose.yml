@@ -13,7 +13,7 @@ services:
       UPLOAD_DIRECTORY: /app/uploads
       MAX_UPLOAD_SIZE_MB: "15"
       MOCK_GOVERNMENT_API: "true"
-      AI_PROVIDER: mock
+      AI_PROVIDER: deterministic
       CORS_ORIGINS: "http://localhost:5173,http://localhost:3000,http://localhost:8080"
       ENVIRONMENT: development
       APP_NAME: "GeM Bid Compliance Verification Platform"

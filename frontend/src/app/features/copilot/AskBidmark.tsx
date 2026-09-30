@@ -2,13 +2,10 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { useNavigate } from 'react-router-dom'
 import { ArrowUp, ChevronRight, CornerDownRight, RotateCcw } from 'lucide-react'
 import { toApiError, type ApiError } from '@/app/lib/api'
-import { cn } from '@/app/lib/cn'
-import { findingTitle, readableRationale } from '@/app/lib/labels'
 import { findingDocumentId, findingPins } from '@/app/lib/bidmarkStatus'
 import { useResource } from '@/app/lib/useResource'
-import { cases, copilot, type CopilotAnswer, type Finding } from '@/app/services/bidmark'
+import { cases, copilot, type Citation, type CopilotAnswer, type Finding } from '@/app/services/bidmark'
 import { Drawer, Skeleton } from '@/app/components/ui/primitives'
-import { SeverityTag } from '@/app/components/bidmark/Status'
 import { BidmarkGlyph } from '@/app/components/gov/Brand'
 
 export interface CopilotSubject {
@@ -53,12 +50,13 @@ export function CopilotProvider({ enabled, children }: { enabled: boolean; child
 }
 
 const SUGGESTIONS = [
-  'Why does this bidder require review?',
+  'Why was this bidder flagged?',
   'What compliance checks failed?',
+  'Which high findings are unresolved?',
   'Show evidence for the OEM finding.',
   'Why are these bidders linked?',
-  'Which mandatory checks are pending?',
-  'Summarise this bidder for decision review.',
+  'What is blocking the final decision?',
+  'Summarise this bidder for officer review.',
 ]
 
 interface Turn { question: string; answer?: CopilotAnswer; error?: ApiError }
@@ -66,17 +64,21 @@ interface Turn { question: string; answer?: CopilotAnswer; error?: ApiError }
 function AskBidmarkPanel({ open, onClose, pageSubject }: { open: boolean; onClose: () => void; pageSubject: CopilotSubject | null }) {
   const [chosen, setChosen] = useState<CopilotSubject | null>(null)
   const subject = pageSubject ?? chosen
-  const status = useResource(open ? 'copilot-status' : null, () => copilot.status())
   const navigate = useNavigate()
 
-  function cite(f: Finding) {
+  // Each citation opens the part of the case it points at.
+  function cite(c: Citation) {
     if (!subject) return
     onClose()
     const base = `/officer/cases/${subject.caseId}`
-    const doc = findingDocumentId(f) ?? findingPins(f)[0]?.document_id
-    if (doc) navigate(`${base}?tab=documents&finding=${encodeURIComponent(f.id)}&doc=${doc}`)
-    else if (f.source === 'CARTEL') navigate(`${base}?tab=connections`)
-    else navigate(`${base}?tab=findings&finding=${encodeURIComponent(f.id)}`)
+    const f = c.type === 'finding' ? subject.findings.find(x => x.id === c.id) : undefined
+    const doc = c.document_id ?? (f ? findingDocumentId(f) ?? findingPins(f)[0]?.document_id : null)
+    if (c.type === 'finding' && f?.source === 'CARTEL') navigate(`${base}?tab=connections`)
+    else if (c.type === 'finding') navigate(doc ? `${base}?tab=documents&finding=${encodeURIComponent(c.id)}&doc=${doc}` : `${base}?tab=findings&finding=${encodeURIComponent(c.id)}`)
+    else if (c.type === 'document') navigate(`${base}?tab=documents&doc=${c.id}`)
+    else if (c.type === 'check') navigate(`${base}?tab=passport`)
+    else if (c.type === 'relationship') navigate(`${base}?tab=connections`)
+    else navigate(`${base}?tab=audit`)
   }
 
   return (
@@ -84,7 +86,7 @@ function AskBidmarkPanel({ open, onClose, pageSubject }: { open: boolean; onClos
       title={<span className="flex items-center gap-2"><BidmarkGlyph className="size-5" /> Ask Bidmark</span>}
       subtitle={subject ? <>About <span className="text-ink-2">{subject.bidderName}</span>{subject.tenderNumber ? `, ${subject.tenderNumber}` : ''}</> : 'Choose the bid you want to ask about'}>
       {subject
-        ? <Conversation key={subject.caseId} subject={subject} onCite={cite} canChange={!pageSubject} onChange={() => setChosen(null)} mode={status.data?.mode} model={status.data?.model} />
+        ? <Conversation key={subject.caseId} subject={subject} onCite={cite} canChange={!pageSubject} onChange={() => setChosen(null)} />
         : <CasePicker onPick={setChosen} />}
     </Drawer>
   )
@@ -133,8 +135,8 @@ function CasePicker({ onPick }: { onPick: (s: CopilotSubject) => void }) {
   )
 }
 
-function Conversation({ subject, onCite, canChange, onChange, mode, model }: {
-  subject: CopilotSubject; onCite: (f: Finding) => void; canChange: boolean; onChange: () => void; mode?: 'llm' | 'templated'; model?: string | null
+function Conversation({ subject, onCite, canChange, onChange }: {
+  subject: CopilotSubject; onCite: (c: Citation) => void; canChange: boolean; onChange: () => void
 }) {
   const [turns, setTurns] = useState<Turn[]>([])
   const [q, setQ] = useState('')
@@ -188,7 +190,7 @@ function Conversation({ subject, onCite, canChange, onChange, mode, model }: {
         {turns.map((t, i) => (
           <div key={i} className="space-y-2 animate-rise-in">
             <p className="ml-auto w-fit max-w-[85%] rounded-lg rounded-br-sm bg-navy px-3 py-2 text-[14px] text-white">{t.question}</p>
-            {t.answer ? <AnswerBody answer={t.answer} findings={subject.findings} onCite={onCite} />
+            {t.answer ? <AnswerBody answer={t.answer} onCite={onCite} onAsk={q => void ask(q)} />
               : t.error ? <AnswerError error={t.error} />
                 : (
                   <p className="flex items-center gap-2 text-[13px] text-ink-3" role="status">
@@ -213,9 +215,7 @@ function Conversation({ subject, onCite, canChange, onChange, mode, model }: {
           </button>
         </form>
         <p className="mt-2 text-[12px] leading-snug text-ink-3">
-          {mode === 'llm' ? `Answers are written by ${model ?? 'the configured model'} from findings recorded on this bid, with citations.`
-            : mode === 'templated' ? 'Answers are assembled from findings recorded on this bid. No language model is configured.'
-              : 'Answers cite findings recorded on this bid.'} Decision support only. Questions are logged in the audit trail.
+          Answers are composed from the findings, checks and records on this bid. No external AI service is used. Decision support only; questions are logged in the audit trail.
         </p>
       </div>
     </div>
@@ -232,47 +232,35 @@ function AnswerError({ error }: { error: ApiError }) {
   )
 }
 
-function AnswerBody({ answer, findings, onCite }: { answer: CopilotAnswer; findings: Finding[]; onCite: (f: Finding) => void }) {
-  const byId = new Map(findings.map(f => [f.id, f]))
-  const order: string[] = []
-  const parts: ReactNode[] = []
-  const re = /\[([^\]]+)\]/g
-  let last = 0
-  let m: RegExpExecArray | null
-  let n = 0
-  while ((m = re.exec(answer.answer))) {
-    parts.push(readableRationale(answer.answer.slice(last, m.index)))
-    const f = byId.get(m[1])
-    if (f) {
-      if (!order.includes(f.id)) order.push(f.id)
-      const num = order.indexOf(f.id) + 1
-      parts.push(
-        <button key={`c${n++}`} onClick={() => onCite(f)} title={findingTitle(f.code, f.title)}
-          className="mx-0.5 inline-flex h-5 min-w-5 items-center justify-center rounded bg-navy-50 px-1 align-[1px] text-[12px] font-semibold text-navy-600 ring-1 ring-navy-100 hover:bg-navy-100">
-          {num}
-        </button>,
-      )
-    }
-    last = re.lastIndex
-  }
-  parts.push(readableRationale(answer.answer.slice(last)))
-  const cited = answer.evidence.map(id => byId.get(id)).filter((f): f is Finding => !!f)
+const CITE_KIND: Record<string, string> = { finding: 'Finding', document: 'Document', check: 'Check', relationship: 'Link', audit: 'Audit entry' }
+
+function AnswerBody({ answer, onCite, onAsk }: { answer: CopilotAnswer; onCite: (c: Citation) => void; onAsk: (q: string) => void }) {
+  const cites = answer.citations ?? []
   return (
     <div className="rounded-lg border border-line bg-surface">
-      <p className="whitespace-pre-line px-3.5 py-3 text-[14px] leading-relaxed text-ink">{parts}</p>
-      {cited.length > 0 && (
+      <p className="whitespace-pre-line px-3.5 py-3 text-[14px] leading-relaxed text-ink">{answer.answer}</p>
+      {cites.length > 0 && (
         <div className="border-t border-line px-3.5 py-2.5">
-          <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-3">Evidence cited</p>
+          <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-3">Sources</p>
           <ul className="space-y-0.5">
-            {cited.map(f => (
-              <li key={f.id}>
-                <button onClick={() => onCite(f)} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left hover:bg-sunken">
-                  <span className="tnum w-4 text-[12px] font-semibold text-navy-600">{order.indexOf(f.id) + 1 || ''}</span>
-                  <SeverityTag severity={f.severity} />
-                  <span className="min-w-0 flex-1 truncate text-[13px]">{findingTitle(f.code, f.title)}</span>
-                  <span className={cn('text-[12px] text-navy-600')}>Open</span>
+            {cites.map(c => (
+              <li key={`${c.type}:${c.id}`}>
+                <button onClick={() => onCite(c)} className="flex w-full items-center gap-2 rounded-md px-1.5 py-1.5 text-left transition-colors hover:bg-sunken">
+                  <span className="w-20 shrink-0 text-[12px] text-ink-3">{CITE_KIND[c.type] ?? 'Record'}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{c.label}{c.page ? `, page ${c.page}` : ''}</span>
+                  <span className="shrink-0 text-[12px] text-navy-600">Open</span>
                 </button>
               </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {answer.suggestions && answer.suggestions.length > 0 && (
+        <div className="border-t border-line px-3.5 py-2.5">
+          <p className="mb-1.5 text-[12px] font-semibold uppercase tracking-[0.05em] text-ink-3">Try asking</p>
+          <ul className="space-y-1">
+            {answer.suggestions.map(q => (
+              <li key={q}><button onClick={() => onAsk(q)} className="text-left text-[13px] text-navy-600 hover:underline">{q}</button></li>
             ))}
           </ul>
         </div>

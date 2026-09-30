@@ -11,9 +11,7 @@
 
 The free plan sleeps after inactivity; the first request after a pause takes about a minute.
 
-Optional: `AI_PROVIDER=llm` plus `LLM_API_KEY` (an Anthropic API key) makes the Copilot write its
-answers with Claude (`LLM_MODEL`, default `claude-opus-5-5`). The key is a Render secret, never a `VITE_*` variable. Without them it answers from templates
-over the same evidence.
+Ask Bidmark needs no API key: `AI_PROVIDER=deterministic` composes answers from the records on each bid.
 
 ## Frontend: Vercel
 

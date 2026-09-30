@@ -33,10 +33,8 @@ class Settings(BaseSettings):
 
     MOCK_GOVERNMENT_API: bool = True
 
-    AI_PROVIDER: str = "mock"  # "mock" | "llm"
-    LLM_API_KEY: str = ""  # Anthropic API key; empty uses the SDK's own credential chain
-    LLM_MODEL: str = "claude-opus-5-5"
-    LLM_TIMEOUT_SECONDS: float = 30.0  # below the web client's 45 s request timeout
+    # Ask Bidmark answers deterministically from case records. No external AI service or key is used.
+    AI_PROVIDER: str = "deterministic"
 
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174,http://localhost:3000"
 

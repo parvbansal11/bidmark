@@ -1,7 +1,6 @@
 """
 AIProvider
   ├── MockAIProvider   (deterministic, rule-based, default, no external calls)
-  └── LLMProvider      (optional; reads LLM_API_KEY; not wired by default)
 
 AI in this platform never invents a verification result and never issues a
 final qualification decision. It explains, classifies, maps requirements to
@@ -9,13 +8,6 @@ evidence, and drafts recommendations for a human Procurement Officer.
 """
 from abc import ABC, abstractmethod
 from typing import Any
-
-
-class CopilotUnavailable(Exception):
-    """The configured language model could not produce a grounded answer.
-
-    Raised instead of substituting another answer, so the officer is told the
-    assistant is down rather than shown text from a different source."""
 
 
 class AIProvider(ABC):

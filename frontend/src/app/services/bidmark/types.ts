@@ -401,15 +401,31 @@ export interface RuleReliability {
   dismissed?: number
 }
 
+export type CitationType = 'finding' | 'document' | 'check' | 'relationship' | 'audit'
+
+export interface Citation {
+  type: CitationType
+  id: string
+  label: string
+  document_id?: string | null
+  page?: number | null
+  requirement_type?: string
+  bidder_id?: string
+  seq?: number
+}
+
 export interface CopilotAnswer {
   answer: string
   evidence: string[]
   question: string
   disclaimer: string
   provider?: string
+  intent?: string
+  citations?: Citation[]
+  suggestions?: string[]
 }
 
-export interface CopilotStatus { mode: 'llm' | 'templated'; model: string | null }
+export interface CopilotStatus { mode: 'deterministic'; model: string | null }
 
 // Home payloads, one per role
 export interface OfficerStats {

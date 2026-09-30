@@ -133,7 +133,7 @@ that is judgement rather than eligibility is statistical or learned:
 - Content similarity between bidders' documents (TF-IDF, cosine similarity).
 - Robust statistics for price screens and image compression analysis (median/MAD z-scores).
 - Rule reliability learned from officer rulings (Beta-Bernoulli), which reorders the queue.
-- The Copilot answers only from computed evidence; an LLM can be switched on with `AI_PROVIDER=llm`.
+- Ask Bidmark answers only from computed evidence, deterministically, with citations. No language model is used.
 
 The design goal is the same one a production fraud system follows: start with rules and
 unsupervised signals on day one, collect officer outcomes as labels (shadow mode), then train on
