@@ -30,6 +30,8 @@ def case_view(client, headers, case_id):
     ("What changed after the officer ruling?", "AUDIT_SUMMARY"),
     ("Is this bidder blacklisted?", "DEBARMENT_STATUS"),
     ("What is the compliance score?", "COMPLIANCE_SCORE"),
+    ("Is this bidder compliant?", "COMPLIANCE_STATUS"),
+    ("Is the submission complete?", "COMPLIANCE_STATUS"),
     ("Why is the risk level high?", "RISK_REASON"),
 ])
 def test_questions_route_to_intents(question, intent):

@@ -153,6 +153,13 @@ describe('decision gate', () => {
     expect(screen.getByRole('button', { name: /Send to bidder/ })).toBeDisabled()
   })
 
+  it('stays locked by an open high finding even when every applicable check is verified', async () => {
+    const verification = { applicable: 5, verified: 5, requires_review: 0, non_compliant: 0, pending: 0, submission: { expected: 4, submitted: 4 }, checks: [] }
+    await renderDecision({ ...caseWith([high('f1')]), verification })
+    expect(screen.getByText('1 high finding requires disposition')).toBeInTheDocument()
+    expect(screen.queryByRole('radio', { name: /^Qualify/ })).not.toBeInTheDocument()
+  })
+
   it('records a disposition through the backend', async () => {
     svc.dispose.mockResolvedValue({})
     await renderDecision(caseWith([high('f1')]))

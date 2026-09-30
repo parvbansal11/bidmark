@@ -90,6 +90,7 @@ RULES: list[tuple[str, tuple[str, ...]]] = [
     ("AUDIT_SUMMARY", ("changed", "ruling", "ruled", "audit", "history", "happened", "timeline", "upheld", "dismissed")),
     ("PENDING_CHECKS", ("pending", "missing", "not checked", "outstanding", "yet to", "statutory")),
     ("FAILED_CHECKS", ("fail", "non compliant", "noncompliant", "not met", "compliance check", "checks")),
+    ("COMPLIANCE_STATUS", ("compliant", "compliance", "verified", "verification", "complete", "submitted")),
     ("FINDING_EVIDENCE", ("evidence", "show", "where", "which page", "proof")),
     ("DOCUMENT_FINDINGS", ("document", "certificate", "file", "tamper", "altered", "modified", "forged")),
     ("HIGH_FINDINGS", ("high", "unresolved", "open finding", "severe", "serious")),
@@ -394,21 +395,64 @@ def decision_blockers(ctx: Context) -> tuple[str, list[dict]]:
     return "Nothing blocks the decision. Every high finding has a ruling, so Qualify or Disqualify can be recorded with a reason.", []
 
 
+def _risk_level(ctx: Context) -> str:
+    """The case page's risk: the higher of the screening lane and the compliance report's risk level."""
+    c = ctx.case or {}
+    lane = {"ESCALATED": 0, "STANDARD": 1}.get(c.get("lane"), 2)
+    comp = (c.get("summary", {}).get("compliance_risk") or "").upper()
+    report = 0 if comp in ("HIGH", "CRITICAL") else 1 if comp == "MEDIUM" else 2
+    return ("high", "medium", "low")[min(lane, report)]
+
+
+def _verification_sentence(v: dict) -> str:
+    sub = v["submission"]
+    if not sub["expected"]:
+        submitted = ""
+    elif sub["submitted"] == sub["expected"]:
+        submitted = "All required documents have been submitted"
+    else:
+        submitted = f"{sub['submitted']} of {sub['expected']} required documents have been submitted"
+    if v["verified"] == v["applicable"]:
+        checks = f"all {_plural(v['applicable'], 'applicable check')} {'is' if v['applicable'] == 1 else 'are'} verified."
+        return f"{submitted}, and {checks}" if submitted else checks[0].upper() + checks[1:]
+    rest = [x for x in (
+        f"{v['requires_review']} {'requires' if v['requires_review'] == 1 else 'require'} review" if v["requires_review"] else "",
+        f"{v['non_compliant']} {'is' if v['non_compliant'] == 1 else 'are'} non-compliant" if v["non_compliant"] else "",
+        f"{v['pending']} {'is' if v['pending'] == 1 else 'are'} pending" if v["pending"] else "",
+    ) if x]
+    checks = (f"{v['verified']} of {_plural(v['applicable'], 'applicable check')} {'is' if v['verified'] == 1 else 'are'} verified"
+              + (f" and {rest[0]}." if len(rest) == 1 else f"; {_join(rest)}."))
+    lead = f"{submitted}, but verification is not complete." if submitted else "Verification is not complete."
+    return f"{lead} {checks}"
+
+
+def compliance_status(ctx: Context) -> tuple[str, list[dict]]:
+    """Submission, verification, risk and the decision gate, stated separately so they cannot be read as one verdict."""
+    v = (ctx.case or {}).get("verification")
+    if not v:
+        return "No compliance evaluation is recorded for this bid yet, so no requirement is verified.", []
+    parts = [_verification_sentence(v)]
+    open_high = _open_high(ctx)
+    stage = (ctx.case or {}).get("stage")
+    risk = f"The case is currently {_risk_level(ctx)} risk"
+    if stage == "DECIDED":
+        parts.append(f"{risk}, and the officer's decision is recorded.")
+    elif open_high:
+        parts.append(f"{risk} with {_plural(len(open_high), 'finding')} requiring officer rulings before a final decision.")
+    else:
+        parts.append(f"{risk}. No high finding is waiting for a ruling.")
+    if v["requires_review"] and not v["non_compliant"]:
+        parts.append("Review required is not a failed requirement; the officer rules on it.")
+    bad = [c for c in v["checks"] if c["status"] != "VERIFIED"]
+    return " ".join(parts), [_cite_check(c["requirement_type"], _category(c["requirement_type"])) for c in bad] + [_cite_finding(ctx, f) for f in open_high]
+
+
 def compliance_score(ctx: Context) -> tuple[str, list[dict]]:
-    score = (ctx.case or {}).get("summary", {}).get("compliance_score")
-    if score is None and ctx.report:
-        score = ctx.report.overall_score
-    if score is None:
-        return "No compliance score is recorded for this bid yet.", []
-    counts = {s: sum(1 for e in ctx.evaluations if e.status == s) for s in ("VERIFIED", "FAILED", "PENDING", "REQUIRES_REVIEW", "NOT_APPLICABLE")}
-    risk = (ctx.report.risk_level if ctx.report else None) or (ctx.case or {}).get("summary", {}).get("compliance_risk")
-    text = (f"The compliance score is {round(score)} out of 100{f', with compliance risk {risk.lower()}' if risk else ''}. "
-            f"Of {len(ctx.evaluations)} tender requirements, {counts['VERIFIED']} verified, {counts['FAILED']} failed, "
-            f"{counts['REQUIRES_REVIEW']} need review, {counts['PENDING']} pending and {counts['NOT_APPLICABLE']} not applicable.")
-    if ctx.findings and any(f["severity"] == "HIGH" for f in ctx.findings):
-        text += " The score covers tender requirements; document and linked-bidder findings are assessed separately in the risk level."
-    bad = [e for e in ctx.evaluations if e.status in ("FAILED", "REQUIRES_REVIEW", "PENDING")]
-    return text, [_cite_check(e.requirement_type, _eval_label(e)) for e in bad]
+    text, cites = compliance_status(ctx)
+    if not (ctx.case or {}).get("verification"):
+        return text, cites
+    return ("Bidmark reports verified checks rather than a single compliance score, because tender requirements are not "
+            f"equally weighted and a submitted document is not a verified one. {text}"), cites
 
 
 LANE_REASON = {
@@ -424,7 +468,7 @@ def risk_reason(ctx: Context) -> tuple[str, list[dict]]:
         return "No risk level is recorded because the bid has not been screened.", []
     lane = c.get("lane")
     comp = c.get("summary", {}).get("compliance_risk")
-    level = "high" if lane == "ESCALATED" or comp == "HIGH" else "medium" if lane == "STANDARD" or comp == "MEDIUM" else "low"
+    level = _risk_level(ctx)
     drivers = _sorted([f for f in ctx.findings if f["severity"] in ("HIGH", "MEDIUM")])[:4]
     by_source: dict[str, int] = {}
     for f in ctx.findings:
@@ -507,13 +551,10 @@ def bidder_summary(ctx: Context) -> tuple[str, list[dict]]:
     if not c:
         return f"{ctx.bidder_name} has no screened bid on {ctx.tender_number}.", []
     parts = [f"{ctx.bidder_name} on {ctx.tender_number}."]
-    score = c.get("summary", {}).get("compliance_score")
-    if score is not None:
-        parts.append(f"Compliance score {round(score)} out of 100.")
-    lane = c.get("lane")
-    parts.append(f"Risk {'high' if lane == 'ESCALATED' else 'medium' if lane == 'STANDARD' else 'low'}.")
-    failed = [e for e in ctx.evaluations if e.status in ("FAILED", "REQUIRES_REVIEW")]
-    parts.append(f"{_plural(len(failed), 'tender requirement')} failed or need review." if failed else "All evaluated tender requirements pass.")
+    v = c.get("verification")
+    parts.append(_verification_sentence(v) if v else "No compliance evaluation is recorded yet.")
+    parts.append(f"Risk {_risk_level(ctx)}.")
+    failed = [ch for ch in (v or {}).get("checks", []) if ch["status"] in ("NON_COMPLIANT", "REQUIRES_REVIEW")]
     open_high = _open_high(ctx)
     parts.append(f"{_plural(len(open_high), 'high finding')} unresolved." if open_high else "No high finding is unresolved.")
     if ctx.links:
@@ -524,13 +565,13 @@ def bidder_summary(ctx: Context) -> tuple[str, list[dict]]:
         parts.append(f"Recommendation: {REC[rec]}.")
     blockers, _ = decision_blockers(ctx)
     parts.append(blockers)
-    return " ".join(parts), [_cite_finding(ctx, f) for f in open_high] + [_cite_check(e.requirement_type, _eval_label(e)) for e in failed]
+    return " ".join(parts), [_cite_finding(ctx, f) for f in open_high] + [_cite_check(ch["requirement_type"], _category(ch["requirement_type"])) for ch in failed]
 
 
 HANDLERS = {
     "BIDDER_SUMMARY": bidder_summary, "FLAG_REASON": flag_reason, "FAILED_CHECKS": failed_checks, "PENDING_CHECKS": pending_checks,
     "HIGH_FINDINGS": high_findings, "LINKED_BIDDERS": linked_bidders, "DECISION_BLOCKERS": decision_blockers,
-    "COMPLIANCE_SCORE": compliance_score, "RISK_REASON": risk_reason, "AUDIT_SUMMARY": audit_summary,
+    "COMPLIANCE_SCORE": compliance_score, "COMPLIANCE_STATUS": compliance_status, "RISK_REASON": risk_reason, "AUDIT_SUMMARY": audit_summary,
     "DOCUMENT_FINDINGS": document_findings, "DEBARMENT_STATUS": debarment_status,
 }
 

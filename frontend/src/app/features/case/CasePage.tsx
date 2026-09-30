@@ -22,6 +22,7 @@ import { useCase, useCaseContext } from './data'
 import { ForensicsTab } from './ForensicsTab'
 import { RegistryTab } from './RegistryTab'
 import { DecisionTab } from './DecisionTab'
+import { VerificationValue } from './VerificationValue'
 import { CaseTimeline } from './CaseTimeline'
 
 type TabId = 'passport' | 'findings' | 'documents' | 'connections' | 'decision' | 'audit'
@@ -110,8 +111,8 @@ export function CasePage() {
       />
 
       <div className="mb-7 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCell label="Compliance">
-          <p className="tnum text-[22px] font-semibold leading-tight">{c.summary.compliance_score != null ? Math.round(c.summary.compliance_score) : '-'}<span className="text-[14px] font-normal text-ink-3"> / 100</span></p>
+        <SummaryCell label="Verification">
+          <VerificationValue v={c.verification} />
         </SummaryCell>
         <SummaryCell label="Risk">
           <StatusPill kind={riskKind(risk)} label={risk} />

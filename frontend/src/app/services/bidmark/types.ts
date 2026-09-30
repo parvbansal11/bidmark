@@ -103,6 +103,18 @@ export interface CaseSummary {
   recommendation_rationale?: string
 }
 
+// Tender requirements the compliance report applies to this bid, counted without weighting.
+// Only a requirement verified with no open or upheld finding on its evidence counts as verified.
+export interface VerificationSummary {
+  applicable: number
+  verified: number
+  requires_review: number
+  non_compliant: number
+  pending: number
+  submission: { expected: number; submitted: number }
+  checks: { requirement_type: string; status: 'VERIFIED' | 'REQUIRES_REVIEW' | 'NON_COMPLIANT' | 'PENDING'; evidence_expected: boolean; evidence_submitted: boolean }[]
+}
+
 export interface CaseDetail {
   id: string
   tender_id: string
@@ -114,6 +126,7 @@ export interface CaseDetail {
   summary: CaseSummary
   findings: Finding[]
   undisposed_high: string[]
+  verification?: VerificationSummary | null
   screened_at: string | null
   sla_due_at: string | null
   sla_breached: boolean

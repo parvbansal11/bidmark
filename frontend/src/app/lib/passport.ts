@@ -1,6 +1,6 @@
 import type { StatusKind } from '@/app/components/bidmark/Status'
 import type {
-  Bidder, BidderEvaluation, CaseDetail, DocumentRecord, Finding, RegistryResult, Requirement, RequirementEvaluation,
+  Bidder, BidderEvaluation, CaseDetail, DocumentRecord, Finding, RegistryResult, Requirement, RequirementEvaluation, VerificationSummary,
 } from '@/app/services/bidmark'
 import { findingCategories, severityRank } from './bidmarkStatus'
 import { categoryLabel, findingTitle } from './labels'
@@ -189,8 +189,27 @@ export function passportRows(input: PassportInput): PassportRow[] {
 
 export interface PassportSummary { verified: number; review: number; nonCompliant: number; pending: number; applicable: number }
 
+// Counts cover the tender's applicable requirements only, so a check the tender does not ask for
+// neither pads the verified count nor sits in the denominator. Unchecked is never counted as verified.
 export function passportSummary(rows: PassportRow[]): PassportSummary {
-  const count = (r: PassportResult) => rows.filter(x => x.result === r).length
-  const applicable = rows.filter(r => !['Not applicable', 'Unavailable'].includes(r.result)).length
-  return { verified: count('Verified'), review: count('Review required'), nonCompliant: count('Non-compliant'), pending: count('Pending') + count('Not verified'), applicable }
+  const applicable = rows.filter(r => r.requirement && r.result !== 'Not applicable' && r.result !== 'Unavailable')
+  const count = (r: PassportResult) => applicable.filter(x => x.result === r).length
+  return { verified: count('Verified'), review: count('Review required'), nonCompliant: count('Non-compliant'), pending: count('Pending') + count('Not verified'), applicable: applicable.length }
+}
+
+export interface VerificationText { headline: string; details: { text: string; tone: 'review' | 'finding' | 'muted' }[]; submission: string | null }
+
+// The case summary card: verified counts and what the rest are, never a score. Requirements are not
+// equally weighted, so "4 of 5 verified" is stated rather than "80%".
+export function verificationText(v: VerificationSummary): VerificationText {
+  const details: VerificationText['details'] = []
+  if (v.non_compliant) details.push({ text: `${v.non_compliant} non-compliant`, tone: 'finding' })
+  if (v.requires_review) details.push({ text: `${v.requires_review} ${v.requires_review === 1 ? 'requires' : 'require'} review`, tone: 'review' })
+  if (v.pending) details.push({ text: `${v.pending} pending`, tone: 'muted' })
+  const { expected, submitted } = v.submission
+  return {
+    headline: `${v.verified} of ${v.applicable}`,
+    details,
+    submission: !expected ? null : submitted === expected ? 'Submission complete' : `${submitted} of ${expected} documents submitted`,
+  }
 }

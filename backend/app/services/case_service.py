@@ -32,6 +32,7 @@ from app.models.user import User, UserRole
 from app.models.verification import Discrepancy
 from app.services.audit_service import log_action
 from app.services.notification_service import notify
+from app.services import verification_summary
 from app.services.workflow_orchestrator import run_full_verification
 
 O, A, B, S = UserRole.PROCUREMENT_OFFICER, UserRole.ADMIN, UserRole.BIDDER, "SYSTEM"
@@ -303,6 +304,7 @@ def view(db: Session, case: BidCase) -> dict:
         "id": case.id, "tender_id": case.tender_id, "bidder_id": case.bidder_id, "stage": case.stage, "lane": case.lane,
         "priority": case.priority, "assigned_officer_id": case.assigned_officer_id, "summary": case.summary or {},
         "findings": findings, "undisposed_high": open_high,
+        "verification": verification_summary.for_case(db, case.bidder_id, case.tender_id, findings),
         "screened_at": case.screened_at.isoformat() if case.screened_at else None,
         "sla_due_at": _aware(case.sla_due_at).isoformat() if case.sla_due_at else None,
         "sla_breached": bool(case.sla_due_at and case.stage not in ("DECIDED", "WITHDRAWN") and _aware(case.sla_due_at) < _now()),

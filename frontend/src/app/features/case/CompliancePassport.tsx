@@ -109,7 +109,7 @@ export function WhyDetails({ c }: { c: CaseDetail }) {
               </li>
             ))}
           </ul>
-        ) : <p className="text-ink-2">No findings raised. The score reflects the tender requirements that were verified.</p>}
+        ) : <p className="text-ink-2">No findings raised. The assessment reflects the tender requirements that were verified.</p>}
       </div>
       <div>
         <p className="eyebrow mb-1">Risk basis</p>
